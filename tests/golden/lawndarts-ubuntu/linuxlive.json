@@ -1,0 +1,40 @@
+{
+  "apps": [
+    {
+      "flatpak": "org.mozilla.firefox",
+      "id": "firefox",
+      "name": "Firefox"
+    },
+    {
+      "flatpak": "org.videolan.VLC",
+      "id": "vlc",
+      "name": "VLC"
+    }
+  ],
+  "base": {
+    "id": "ubuntu",
+    "label": "Ubuntu 26.04 LTS",
+    "release": "26.04"
+  },
+  "base_image": "docker.io/library/ubuntu:26.04",
+  "branding": {
+    "accent_color": "#e0661f",
+    "gnome_accent": null,
+    "logo": "/usr/share/pixmaps/linuxlive-logo.png",
+    "wallpaper": "/usr/share/backgrounds/linuxlive/wallpaper.png"
+  },
+  "desktop": {
+    "id": "cinnamon",
+    "label": "Cinnamon",
+    "shell_process": "cinnamon"
+  },
+  "id": "lawn-darts-linux",
+  "iso": {
+    "file_name": "lawn-darts-linux-0.1-ubuntu-amd64.iso",
+    "kernel_args": "boot=casper quiet splash ---",
+    "layout": "casper",
+    "volume_id": "LAWN_DARTS_LINUX_0_1"
+  },
+  "name": "Lawn Darts Linux",
+  "version": "0.1"
+}

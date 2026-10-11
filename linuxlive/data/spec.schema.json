@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://linuxlive.com/schema/spec-1.json",
+  "title": "linuxlive distro spec",
+  "description": "Describes one custom distro: its base, desktop, apps and branding.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "name", "version", "base", "desktop", "branding"],
+  "properties": {
+    "schema_version": {
+      "description": "Version of this spec format.",
+      "const": 1
+    },
+    "name": {
+      "description": "Display name, shown in the boot menu, the About screen and os-release.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9 ._+-]*[A-Za-z0-9+])?$"
+    },
+    "id": {
+      "description": "Machine-friendly name used for the hostname, file names and os-release IMAGE_ID. Derived from name when omitted.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,29}$"
+    },
+    "version": {
+      "description": "Version of this distro, for example 0.1 or 2026.10.",
+      "type": "string",
+      "pattern": "^[0-9A-Za-z][0-9A-Za-z.+~-]{0,19}$"
+    },
+    "base": {
+      "description": "Distribution the build starts from.",
+      "enum": ["ubuntu", "fedora"]
+    },
+    "desktop": {
+      "description": "Desktop environment.",
+      "enum": ["gnome", "kde", "cinnamon"]
+    },
+    "apps": {
+      "description": "Catalog app IDs to preinstall from Flathub.",
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 50,
+      "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}
+    },
+    "branding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wallpaper", "logo"],
+      "properties": {
+        "wallpaper": {
+          "description": "PNG or JPEG, at least 1280x720, relative to the spec file.",
+          "type": "string",
+          "minLength": 1
+        },
+        "logo": {
+          "description": "Square PNG of 128, 256 or 512 pixels, relative to the spec file.",
+          "type": "string",
+          "minLength": 1
+        },
+        "accent_color": {
+          "description": "Accent colour as #rrggbb.",
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      }
+    }
+  }
+}

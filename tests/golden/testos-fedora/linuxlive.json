@@ -1,0 +1,40 @@
+{
+  "apps": [
+    {
+      "flatpak": "org.mozilla.firefox",
+      "id": "firefox",
+      "name": "Firefox"
+    },
+    {
+      "flatpak": "org.videolan.VLC",
+      "id": "vlc",
+      "name": "VLC"
+    }
+  ],
+  "base": {
+    "id": "fedora",
+    "label": "Fedora 44",
+    "release": "44"
+  },
+  "base_image": "quay.io/fedora/fedora-kinoite:44",
+  "branding": {
+    "accent_color": "#c2185b",
+    "gnome_accent": null,
+    "logo": "/usr/share/pixmaps/linuxlive-logo.png",
+    "wallpaper": "/usr/share/backgrounds/linuxlive/wallpaper.png"
+  },
+  "desktop": {
+    "id": "kde",
+    "label": "KDE Plasma",
+    "shell_process": "plasmashell"
+  },
+  "id": "testos",
+  "iso": {
+    "file_name": "testos-0.1-fedora-amd64.iso",
+    "kernel_args": "root=live:CDLABEL=TESTOS_0_1 rd.live.image rd.live.overlay.overlayfs=1 quiet rhgb",
+    "layout": "liveos",
+    "volume_id": "TESTOS_0_1"
+  },
+  "name": "TestOS",
+  "version": "0.1"
+}

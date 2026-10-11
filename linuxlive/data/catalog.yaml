@@ -1,0 +1,88 @@
+# What linuxlive can build. The compiler reads this file, and the spec
+# schema's enums for `base` and `desktop` must match the keys below (a test
+# checks that). scripts/check_catalog.py confirms every package, image and
+# Flatpak named here exists upstream.
+
+bases:
+  ubuntu:
+    label: Ubuntu 26.04 LTS
+    release: "26.04"
+    image: docker.io/library/ubuntu:26.04
+    # Installed first: a normal Ubuntu system on top of the minimized container image.
+    system_packages: [ubuntu-minimal, ubuntu-standard, systemd-sysv, locales, sudo]
+    # Live boot (casper), boot splash and the Flatpak runtime. Installed before
+    # the kernel so initramfs-tools, which casper needs, is the initramfs tool.
+    live_packages: [initramfs-tools, casper, plymouth, plymouth-theme-spinner, plymouth-theme-ubuntu-text, flatpak, network-manager]
+    # Installed without recommends: the kernel recommends a bootloader, which a
+    # live image does not need and whose postinst expects a real disk.
+    kernel_packages: [linux-image-generic]
+    # Never installed, even when a metapackage recommends them. firefox,
+    # thunderbird and snapd install snaps, which cannot run in a container
+    # build (apps come from Flathub instead). dracut replaces initramfs-tools,
+    # which casper needs. cloud-init only slows a live boot down.
+    blocked_packages: [firefox, thunderbird, snapd, dracut, cloud-init]
+    # Signed boot chain for Secure Boot, taken from these packages.
+    efi_packages: [shim-signed, grub-efi-amd64-signed]
+
+  fedora:
+    label: Fedora 44
+    release: "44"
+    # Live boot (dmsquash-live), live session setup (livesys) and the boot splash.
+    system_packages: [dracut-live, livesys-scripts, plymouth-theme-spinner, plymouth-plugin-two-step]
+
+desktops:
+  gnome:
+    label: GNOME
+    shell_process: gnome-shell
+    ubuntu:
+      packages: [ubuntu-desktop-minimal, gnome-software, gnome-software-plugin-flatpak]
+    fedora:
+      image: quay.io/fedora/fedora-silverblue:44
+      livesys_session: gnome
+
+  kde:
+    label: KDE Plasma
+    shell_process: plasmashell
+    ubuntu:
+      packages: [kde-plasma-desktop, sddm, sddm-theme-breeze, plasma-nm, plasma-discover, plasma-discover-backend-flatpak, konsole, dolphin]
+    fedora:
+      image: quay.io/fedora/fedora-kinoite:44
+      livesys_session: kde
+
+  cinnamon:
+    label: Cinnamon
+    shell_process: cinnamon
+    # Cinnamon runs on X11 and logs in through LightDM. lightdm only recommends
+    # the X server on Ubuntu, so it is named here.
+    ubuntu:
+      packages: [cinnamon-core, lightdm, slick-greeter, xserver-xorg, gnome-software, gnome-software-plugin-flatpak]
+    # Fedora has no Cinnamon Atomic image, so Cinnamon goes onto base-atomic,
+    # the image Silverblue and Kinoite are built from. dnf in bootc images may
+    # skip weak dependencies, so the recommended pieces are named too.
+    fedora:
+      image: quay.io/fedora-ostree-desktops/base-atomic:44
+      packages: [cinnamon, cinnamon-control-center, lightdm, slick-greeter, xorg-x11-drv-libinput, gnome-terminal, gnome-software, flatpak]
+      livesys_session: cinnamon
+
+# Apps are installed from Flathub, so one ID works on every base.
+apps:
+  firefox: {name: Firefox, flatpak: org.mozilla.firefox}
+  chromium: {name: Chromium, flatpak: org.chromium.Chromium}
+  thunderbird: {name: Thunderbird, flatpak: org.mozilla.Thunderbird}
+  libreoffice: {name: LibreOffice, flatpak: org.libreoffice.LibreOffice}
+  vlc: {name: VLC, flatpak: org.videolan.VLC}
+  gimp: {name: GIMP, flatpak: org.gimp.GIMP}
+  inkscape: {name: Inkscape, flatpak: org.inkscape.Inkscape}
+  krita: {name: Krita, flatpak: org.kde.krita}
+  blender: {name: Blender, flatpak: org.blender.Blender}
+  audacity: {name: Audacity, flatpak: org.audacityteam.Audacity}
+  obs-studio: {name: OBS Studio, flatpak: com.obsproject.Studio}
+  kdenlive: {name: Kdenlive, flatpak: org.kde.kdenlive}
+  vscode: {name: Visual Studio Code, flatpak: com.visualstudio.code}
+  steam: {name: Steam, flatpak: com.valvesoftware.Steam}
+  lutris: {name: Lutris, flatpak: net.lutris.Lutris}
+  heroic: {name: Heroic Games Launcher, flatpak: com.heroicgameslauncher.hgl}
+  discord: {name: Discord, flatpak: com.discordapp.Discord}
+  gcompris: {name: GCompris, flatpak: org.kde.gcompris}
+  tuxpaint: {name: Tux Paint, flatpak: org.tuxpaint.Tuxpaint}
+  flatseal: {name: Flatseal, flatpak: com.github.tchx84.Flatseal}

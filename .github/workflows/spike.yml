@@ -1,0 +1,186 @@
+# Builds every example spec into a live ISO and boots each one in QEMU.
+#
+# unit:   tests, shellcheck, and compiling every example
+# build:  per example: compile -> podman build -> assemble ISO -> inspect ->
+#         boot in five firmware/media modes -> verify against the spec
+#
+# The results artifact (logs, screenshots, result.json files) is what the
+# local gates in GATES.md re-check. Run it by hand with keep_iso to also
+# download the ISOs; they are kept for one day.
+name: spike
+
+on:
+  push:
+    branches: [main]
+    # Docs, working notes and the gate ledger change nothing that gets built or tested.
+    paths-ignore: [README.md, GATES.md, NOTES.md]
+  workflow_dispatch:
+    inputs:
+      keep_iso:
+        description: Upload the ISOs as artifacts (kept for one day)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spike-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - name: Tests
+        run: python -m pytest -q -p no:cacheprovider --junitxml=junit.xml
+      - name: Shellcheck
+        run: |
+          shellcheck --version
+          shellcheck --severity=warning \
+            scripts/assemble-iso.sh \
+            linuxlive/data/rootfs/common/usr/libexec/linuxlive/finalize \
+            linuxlive/data/rootfs/common/usr/libexec/linuxlive/bootcheck \
+            linuxlive/data/rootfs/common/usr/libexec/linuxlive/ini-set \
+            linuxlive/data/rootfs/kde/usr/libexec/linuxlive/kde-apply-wallpaper
+      - name: Compile examples
+        run: |
+          compiled=()
+          for spec in examples/*.yaml; do
+            name=$(basename "$spec" .yaml)
+            python -m linuxlive compile "$spec" -o "build/ctx-$name"
+            bash -n "build/ctx-$name/iso.env"
+            compiled+=("$name")
+          done
+          echo "COMPILED=${compiled[*]}" >> "$GITHUB_ENV"
+      - name: Summary
+        run: |
+          # shellcheck disable=SC2086 # COMPILED is a space-separated list of names
+          python scripts/ci_unit_summary.py --junit junit.xml --commit "$GITHUB_SHA" \
+            --shellcheck ok --compiled $COMPILED --out unit-summary.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: unit-summary
+          path: unit-summary.json
+
+  build:
+    name: build (${{ matrix.example }})
+    needs: unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {example: testos-ubuntu, base: ubuntu}
+          - {example: testos-fedora, base: fedora}
+          - {example: lawndarts-ubuntu, base: ubuntu}
+          - {example: lawndarts-fedora, base: fedora}
+    env:
+      SPEC: examples/${{ matrix.example }}.yaml
+      IMAGE: localhost/linuxlive-${{ matrix.example }}:ci
+      ISO: build/${{ matrix.example }}.iso
+      RESULTS: build/results
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+
+      - name: Record run metadata
+        run: |
+          mkdir -p "$RESULTS"
+          printf '{"commit": "%s", "run_id": "%s", "base": "%s", "spec": "%s"}\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "${{ matrix.base }}" "$SPEC" > "$RESULTS/meta.json"
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force > /dev/null || true
+          df -h /
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf squashfs-tools xorriso grub-pc-bin grub-common mtools dosfstools
+          podman --version
+          qemu-system-x86_64 --version | head -n 1
+          nproc; free -g
+
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+              | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+            ls -l /dev/kvm
+          else
+            echo "::warning::No /dev/kvm on this runner; QEMU will emulate the CPU, which is slow"
+          fi
+
+      - name: Compile spec
+        run: python -m linuxlive compile "$SPEC" -o build/ctx
+
+      - name: Build image
+        run: sudo podman build --pull=newer --tag "$IMAGE" build/ctx
+
+      - name: Assemble ISO
+        run: |
+          sudo LL_SQUASHFS_LEVEL=9 LL_RMI_AFTER=1 bash scripts/assemble-iso.sh build/ctx "$IMAGE" "$ISO"
+          sudo chown "$(id -u):$(id -g)" "$ISO" "$ISO.sha256"
+          df -h /
+
+      - name: Inspect ISO
+        run: |
+          python -m linuxlive inspect-iso "$ISO" --json "$RESULTS/iso.json" > /dev/null
+          cat "$RESULTS/iso.json"
+
+      - name: Boot tests
+        run: |
+          python scripts/boottest.py --iso "$ISO" --mode uefi-usb --session --out "$RESULTS/modes/uefi-usb" || true
+          # If the first boot never reached userspace the rest will not either;
+          # skip them rather than spend hours timing out.
+          if grep -q LINUXLIVE_BOOTCHECK_START "$RESULTS/modes/uefi-usb/serial.log" 2>/dev/null; then
+            for mode in uefi-sb-cd uefi-cd bios-cd bios-usb; do
+              python scripts/boottest.py --iso "$ISO" --mode "$mode" --out "$RESULTS/modes/$mode" || true
+            done
+          else
+            echo "::error::The first boot never reached userspace; skipped the other boot modes"
+          fi
+
+      - name: Verify
+        run: python -m linuxlive verify-results --spec "$SPEC" --results "$RESULTS" --expect-commit "$GITHUB_SHA"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-${{ matrix.example }}
+          path: build/results
+          retention-days: 14
+
+      - name: Upload ISO
+        if: always() && inputs.keep_iso
+        uses: actions/upload-artifact@v7
+        with:
+          name: iso-${{ matrix.example }}
+          path: |
+            build/*.iso
+            build/*.iso.sha256
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: warn

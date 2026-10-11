@@ -1,0 +1,205 @@
+#!/bin/sh
+# Applies a linuxlive spec's branding inside the image build.
+#
+# The generated Containerfile copies the build context's rootfs/ tree into the
+# image and then runs this script once, as root, as its last customization
+# step. Settings come from /usr/lib/linuxlive/branding.env, which the compiler
+# writes from the spec.
+# shellcheck disable=SC2154 # LL_* settings come from /usr/lib/linuxlive/branding.env
+set -eu
+
+# LL_* settings come from this generated file.
+# shellcheck source=/dev/null
+. /usr/lib/linuxlive/branding.env
+
+INI=/usr/libexec/linuxlive/ini-set
+
+log() { printf 'linuxlive-finalize: %s\n' "$*"; }
+die() {
+	printf 'linuxlive-finalize: error: %s\n' "$*" >&2
+	exit 1
+}
+
+# Replace NAME and PRETTY_NAME, add IMAGE_ID, IMAGE_VERSION and LOGO, and keep
+# everything else. ID and VERSION_ID stay upstream's: package tools, installers
+# and bootc-image-builder key off them.
+rewrite_os_release() {
+	src=/usr/lib/os-release
+	[ -e "$src" ] || die "$src is missing"
+	upstream=$(
+		# shellcheck source=/dev/null
+		. "$src"
+		printf '%s' "${PRETTY_NAME:-$NAME}" | sed 's/"/\\"/g'
+	)
+	tmp=$(mktemp)
+	{
+		printf 'NAME="%s"\n' "$LL_NAME"
+		printf 'PRETTY_NAME="%s %s (based on %s)"\n' "$LL_NAME" "$LL_VERSION" "$upstream"
+		grep -Ev '^(NAME|PRETTY_NAME|IMAGE_ID|IMAGE_VERSION|LOGO)=' "$src" || true
+		printf 'IMAGE_ID="%s"\n' "$LL_ID"
+		printf 'IMAGE_VERSION="%s"\n' "$LL_VERSION"
+		printf 'LOGO="linuxlive-logo"\n'
+	} >"$tmp"
+	if [ "$LL_BASE" = ubuntu ]; then
+		# base-files owns this file. Diverting it keeps our copy through upgrades.
+		dpkg-divert --quiet --local --rename --divert /usr/lib/os-release.upstream --add /usr/lib/os-release
+		if [ -f /etc/lsb-release ]; then
+			sed -i "s|^DISTRIB_DESCRIPTION=.*|DISTRIB_DESCRIPTION=\"$LL_NAME $LL_VERSION (based on $upstream)\"|" /etc/lsb-release
+		fi
+	else
+		rm -f "$src"
+	fi
+	install -m 0644 "$tmp" /usr/lib/os-release
+	rm -f "$tmp"
+	ln -sfn ../usr/lib/os-release /etc/os-release
+	log "os-release: $LL_NAME $LL_VERSION (based on $upstream)"
+}
+
+# The theme directory already holds linuxlive.plymouth and watermark.png (the
+# logo). Borrow the spinner theme's animation frames for everything else.
+install_plymouth_theme() {
+	theme=/usr/share/plymouth/themes/linuxlive
+	spinner=/usr/share/plymouth/themes/spinner
+	[ -d "$spinner" ] || die "the plymouth spinner theme is missing; cannot build the boot splash"
+	for img in "$spinner"/*.png; do
+		name=${img##*/}
+		if [ "$name" != watermark.png ] && [ ! -e "$theme/$name" ]; then
+			cp "$img" "$theme/$name"
+		fi
+	done
+	if [ "$LL_BASE" = ubuntu ]; then
+		update-alternatives --quiet --install /usr/share/plymouth/themes/default.plymouth \
+			default.plymouth "$theme/linuxlive.plymouth" 300
+		update-alternatives --quiet --set default.plymouth "$theme/linuxlive.plymouth"
+		"$INI" /etc/plymouth/plymouthd.conf Daemon Theme linuxlive
+		# The text-mode fallback, shown when early graphics are unavailable.
+		text_theme=/usr/share/plymouth/themes/linuxlive-text/linuxlive-text.plymouth
+		[ -f "$text_theme" ] || die "$text_theme is missing"
+		update-alternatives --quiet --install /usr/share/plymouth/themes/text.plymouth \
+			text.plymouth "$text_theme" 300
+		update-alternatives --quiet --set text.plymouth "$text_theme"
+	else
+		plymouth-set-default-theme linuxlive
+	fi
+	log "plymouth theme: linuxlive"
+}
+
+# The logo went into hicolor after package triggers built its icon cache.
+# Desktops that look the logo up by icon name need the cache to list it.
+refresh_icon_cache() {
+	if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+		gtk-update-icon-cache --force --quiet /usr/share/icons/hicolor
+	fi
+}
+
+compile_schemas() {
+	log_file=$(mktemp)
+	if ! glib-compile-schemas /usr/share/glib-2.0/schemas 2>"$log_file"; then
+		cat "$log_file" >&2
+		die "glib-compile-schemas failed"
+	fi
+	# Unknown keys only produce warnings, so check for ours explicitly.
+	if grep -q zz_linuxlive "$log_file"; then
+		cat "$log_file" >&2
+		die "the generated $LL_DESKTOP settings override has errors"
+	fi
+	rm -f "$log_file"
+}
+
+brand_gnome() {
+	compile_schemas
+	log "GNOME defaults compiled"
+}
+
+brand_cinnamon() {
+	compile_schemas
+	greeter=/etc/lightdm/slick-greeter.conf
+	"$INI" "$greeter" Greeter background "$LL_WALLPAPER"
+	"$INI" "$greeter" Greeter draw-user-backgrounds false
+	unit=/etc/systemd/system/display-manager.service
+	if [ "$LL_BASE" = fedora ]; then
+		# The GNOME and KDE images bring their own display manager; this one
+		# starts from base-atomic, which has none enabled.
+		systemctl enable lightdm.service
+		systemctl set-default graphical.target
+	else
+		# Debian's lightdm.service starts only when this file names lightdm,
+		# and its postinst links the unit only when debconf picked lightdm.
+		printf '/usr/sbin/lightdm\n' >/etc/X11/default-display-manager
+		[ -e "$unit" ] || ln -s /usr/lib/systemd/system/lightdm.service "$unit"
+	fi
+	case "$(readlink -f "$unit")" in
+	*/lightdm.service) ;;
+	*) die "display-manager.service is $(readlink -f "$unit"), not lightdm" ;;
+	esac
+	log "Cinnamon wallpaper, menu logo and LightDM login configured"
+}
+
+brand_kde() {
+	group='Greeter][Wallpaper][org.kde.image][General'
+	"$INI" /etc/xdg/kscreenlockerrc "$group" Image "file://$LL_WALLPAPER"
+	"$INI" /etc/xdg/kscreenlockerrc "$group" PreviewImage "file://$LL_WALLPAPER"
+	if [ -n "$LL_ACCENT_RGB" ]; then
+		"$INI" /etc/xdg/kdeglobals General AccentColor "$LL_ACCENT_RGB"
+	fi
+	for sddm_theme in /usr/share/sddm/themes/breeze /usr/share/sddm/themes/01-breeze-fedora; do
+		if [ -d "$sddm_theme" ]; then
+			"$INI" "$sddm_theme/theme.conf.user" General background "$LL_WALLPAPER"
+		fi
+	done
+	log "KDE lock screen, login screen and accent configured"
+}
+
+enable_services() {
+	systemctl enable linuxlive-bootcheck.service
+	if [ "$LL_BASE" = fedora ]; then
+		systemctl enable livesys.service livesys-late.service
+	fi
+}
+
+rebuild_initramfs() {
+	if [ "$LL_BASE" = ubuntu ]; then
+		update-initramfs -u -k all
+	else
+		kver=$(ls -1 /usr/lib/modules)
+		[ "$(printf '%s\n' "$kver" | wc -l)" -eq 1 ] || die "expected one kernel in /usr/lib/modules, found: $kver"
+		# One initramfs serves both the installed (ostree) system and the live ISO.
+		# /root links to /var/roothome, which only exists at runtime; dracut
+		# wants to copy it, so give it an empty one for the build.
+		mkdir -p /var/roothome
+		dracut --no-hostonly --reproducible --kver "$kver" \
+			--add "ostree dmsquash-live plymouth" \
+			--force "/usr/lib/modules/$kver/initramfs.img"
+		rmdir /var/roothome
+		chmod 0600 "/usr/lib/modules/$kver/initramfs.img"
+	fi
+	log "initramfs rebuilt"
+}
+
+clean_up() {
+	if [ "$LL_BASE" = ubuntu ]; then
+		# Leftovers from the minimized container image, wrong for a desktop OS.
+		rm -f /etc/apt/apt.conf.d/docker-* /etc/dpkg/dpkg.cfg.d/docker-* /usr/sbin/policy-rc.d
+		apt-get clean
+		rm -rf /var/lib/apt/lists/*
+	else
+		# bootc images keep /var for runtime state; drop what dnf left behind.
+		dnf clean all >/dev/null
+		rm -rf /run/dnf /var/lib/dnf /var/cache/libdnf5 /var/cache/ldconfig /var/log/dnf5.log*
+	fi
+}
+
+chmod 0755 /usr/libexec/linuxlive/*
+rewrite_os_release
+install_plymouth_theme
+refresh_icon_cache
+case "$LL_DESKTOP" in
+gnome) brand_gnome ;;
+kde) brand_kde ;;
+cinnamon) brand_cinnamon ;;
+*) die "unknown desktop $LL_DESKTOP" ;;
+esac
+enable_services
+rebuild_initramfs
+clean_up
+log "done"

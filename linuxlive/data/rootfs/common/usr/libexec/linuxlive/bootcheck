@@ -1,0 +1,114 @@
+#!/bin/sh
+# linuxlive boot check.
+#
+# Reports how far a boot got by printing LINUXLIVE_* lines to the first serial
+# port, where the QEMU test harness (scripts/boottest.py) reads them. It only
+# runs when QEMU passes -fw_cfg name=opt/linuxlive/bootcheck, so on real
+# hardware, and in VMs started any other way, it exits without doing anything.
+
+# shellcheck disable=SC2154 # os-release variables come from /etc/os-release
+flag=/sys/firmware/qemu_fw_cfg/by_name/opt/linuxlive/bootcheck/raw
+[ -e "$flag" ] || modprobe qemu_fw_cfg 2>/dev/null
+[ -e "$flag" ] || exit 0
+exec 3>/dev/ttyS0 || exit 0
+
+say() { printf '%s\n' "$*" >&3; }
+fact() { say "LINUXLIVE_FACT $1=$2"; }
+
+say LINUXLIVE_BOOTCHECK_START
+
+# shellcheck source=/dev/null
+. /etc/os-release
+fact os_name "$NAME"
+fact os_pretty_name "$PRETTY_NAME"
+fact image_id "${IMAGE_ID:-}"
+fact image_version "${IMAGE_VERSION:-}"
+fact kernel "$(uname -r)"
+fact cmdline "$(cat /proc/cmdline)"
+
+if [ -d /sys/firmware/efi ]; then
+	fact firmware uefi
+else
+	fact firmware bios
+fi
+secureboot=0
+for var in /sys/firmware/efi/efivars/SecureBoot-*; do
+	# 4 bytes of attributes, then the value byte.
+	[ -e "$var" ] && secureboot=$(od -An -tu1 -j4 -N1 "$var" | tr -d ' \n')
+done
+fact secureboot "${secureboot:-0}"
+
+theme=""
+if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+	theme=$(plymouth-set-default-theme 2>/dev/null || true)
+fi
+if [ -z "$theme" ] && [ -e /usr/share/plymouth/themes/default.plymouth ]; then
+	theme=$(basename "$(dirname "$(readlink -f /usr/share/plymouth/themes/default.plymouth)")")
+fi
+fact plymouth_theme "${theme:-unknown}"
+text_theme=none
+if [ -e /usr/share/plymouth/themes/text.plymouth ]; then
+	text_theme=$(basename "$(dirname "$(readlink -f /usr/share/plymouth/themes/text.plymouth)")")
+fi
+fact plymouth_text_theme "$text_theme"
+# What the boot actually used: the themes packed into this kernel's initramfs.
+initrd=""
+for candidate in "/boot/initrd.img-$(uname -r)" "/usr/lib/modules/$(uname -r)/initramfs.img"; do
+	[ -e "$candidate" ] && initrd=$candidate && break
+done
+themes=""
+if [ -n "$initrd" ]; then
+	if command -v lsinitramfs >/dev/null 2>&1; then
+		listing=$(lsinitramfs "$initrd" 2>/dev/null)
+	else
+		listing=$(lsinitrd "$initrd" 2>/dev/null)
+	fi
+	themes=$(printf '%s\n' "$listing" | sed -n 's|.*usr/share/plymouth/themes/\([^/ ]*\)/.*|\1|p' | sort -u | tr '\n' ' ')
+fi
+fact initrd_plymouth_themes "${themes:-unknown}"
+
+if command -v getenforce >/dev/null 2>&1; then
+	fact selinux "$(getenforce 2>/dev/null)"
+else
+	fact selinux absent
+fi
+
+for app in $(flatpak list --system --app --columns=application 2>/dev/null); do
+	fact flatpak "$app"
+done
+say LINUXLIVE_BOOTED
+
+# Wait for an active graphical user session with its desktop shell running.
+deadline=$(($(date +%s) + 2700))
+while [ "$(date +%s)" -lt "$deadline" ]; do
+	for session in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}'); do
+		class=$(loginctl show-session "$session" -p Class --value 2>/dev/null)
+		state=$(loginctl show-session "$session" -p State --value 2>/dev/null)
+		type=$(loginctl show-session "$session" -p Type --value 2>/dev/null)
+		[ "$class" = user ] && [ "$state" = active ] || continue
+		[ "$type" = wayland ] || [ "$type" = x11 ] || continue
+		user=$(loginctl show-session "$session" -p Name --value 2>/dev/null)
+		shell=""
+		for proc in gnome-shell plasmashell cinnamon; do
+			if pgrep -u "$user" -x "$proc" >/dev/null 2>&1; then
+				shell=$proc
+			fi
+		done
+		[ -n "$shell" ] || continue
+		fact session_type "$type"
+		fact session_desktop "$(loginctl show-session "$session" -p Desktop --value 2>/dev/null)"
+		fact session_user "$user"
+		fact shell "$shell"
+		fact failed_units "$(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | tr '\n' ' ')"
+		if [ -d /sys/fs/selinux ]; then
+			fact avc_denials "$(journalctl -k -b --no-pager 2>/dev/null | grep -c 'avc:  denied')"
+			journalctl -k -b --no-pager -o cat 2>/dev/null | grep 'avc:  denied' | head -n 5 |
+				while IFS= read -r line; do fact avc "$line"; done
+		fi
+		say LINUXLIVE_SESSION_READY
+		exit 0
+	done
+	sleep 5
+done
+say LINUXLIVE_SESSION_TIMEOUT
+exit 1

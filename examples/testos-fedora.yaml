@@ -1,0 +1,14 @@
+# Example spec: Fedora 44 with KDE Plasma. CI builds this one and boots it.
+schema_version: 1
+name: TestOS
+id: testos
+version: "0.1"
+base: fedora
+desktop: kde
+apps:
+  - firefox
+  - vlc
+branding:
+  wallpaper: assets/wallpaper.png
+  logo: assets/logo.png
+  accent_color: "#c2185b"

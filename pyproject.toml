@@ -1,0 +1,14 @@
+[project]
+name = "linuxlive"
+version = "0.1.0"
+description = "Compile a distro spec into a container build and a bootable live ISO"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6.0", "jsonschema>=4.18"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

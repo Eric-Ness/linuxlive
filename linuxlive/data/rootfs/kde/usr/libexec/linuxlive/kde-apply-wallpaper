@@ -1,0 +1,28 @@
+#!/bin/sh
+# Sets the linuxlive wallpaper once per user, on their first Plasma login.
+#
+# Plasma has no system-wide default-wallpaper setting that survives every
+# distro's look-and-feel package, so this runs from XDG autostart and asks
+# plasmashell to apply it. A marker file keeps it from overriding a wallpaper
+# the user picks later.
+
+# shellcheck disable=SC2154 # LL_* settings come from /usr/lib/linuxlive/branding.env
+# shellcheck source=/dev/null
+. /usr/lib/linuxlive/branding.env
+
+marker="${XDG_CONFIG_HOME:-$HOME/.config}/linuxlive-wallpaper-applied"
+[ -e "$marker" ] && exit 0
+
+# plasmashell may still be starting; retry for up to two minutes.
+tries=0
+while [ "$tries" -lt 60 ]; do
+	if plasma-apply-wallpaperimage "$LL_WALLPAPER" >/dev/null 2>&1; then
+		mkdir -p "$(dirname "$marker")"
+		: >"$marker"
+		exit 0
+	fi
+	tries=$((tries + 1))
+	sleep 2
+done
+echo "linuxlive: could not apply the wallpaper" >&2
+exit 1

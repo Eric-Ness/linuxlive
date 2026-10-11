@@ -1,0 +1,14 @@
+# Example spec: Lawn Darts Linux, Ubuntu 26.04 with Cinnamon. CI builds this one and boots it.
+# The art comes from scripts/make_lawndarts_assets.py; see assets/lawndarts/CREDITS.md.
+schema_version: 1
+name: Lawn Darts Linux
+version: "0.1"
+base: ubuntu
+desktop: cinnamon
+apps:
+  - firefox
+  - vlc
+branding:
+  wallpaper: assets/lawndarts/wallpaper.png
+  logo: assets/lawndarts/logo.png
+  accent_color: "#e0661f"

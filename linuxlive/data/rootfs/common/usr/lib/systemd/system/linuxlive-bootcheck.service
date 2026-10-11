@@ -1,0 +1,12 @@
+[Unit]
+Description=linuxlive boot check (reports to the serial port in QEMU test runs only)
+Documentation=https://linuxlive.com
+ConditionVirtualization=vm
+After=systemd-user-sessions.service
+
+[Service]
+Type=exec
+ExecStart=/usr/libexec/linuxlive/bootcheck
+
+[Install]
+WantedBy=multi-user.target
