@@ -4,7 +4,7 @@
 #
 #   jobs:
 #     build:
-#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.1.0
+#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.1.1
 #
 # The calling repository holds the spec and its art. The pipeline itself is
 # checked out from linuxlive-repository at linuxlive-ref, which defaults to the
@@ -43,7 +43,7 @@ on:
         description: Pipeline version to build with (a tag, branch or commit)
         type: string
         # Changed with each release; tests/test_workflows.py checks it matches pyproject.toml.
-        default: v0.1.0
+        default: v0.1.1
 
 defaults:
   run:
