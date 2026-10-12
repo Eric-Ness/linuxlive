@@ -182,6 +182,13 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
     )
     shell = plan.desktop.shell_process
     c.expect(_fact(result, "shell") == shell, f"desktop shell is {_fact(result, 'shell')!r}, expected {shell!r}")
+    after = _fact(result, "shell_after_settle")
+    errors = _facts(result, "session_error")
+    c.expect(
+        after == shell,
+        f"desktop shell still running 30 s after login: {after!r}, expected {shell!r}"
+        + (f"; session errors: {' | '.join(errors)}" if errors else ""),
+    )
     c.expect(
         _fact(result, "plymouth_theme") == "linuxlive",
         f"Plymouth theme is {_fact(result, 'plymouth_theme')!r}, expected 'linuxlive'",

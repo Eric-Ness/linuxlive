@@ -59,6 +59,7 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
     markers = ["LINUXLIVE_BOOTCHECK_START", "LINUXLIVE_BOOTED"]
     if session:
         facts["shell"] = ["gnome-shell" if base == "ubuntu" else "plasmashell"]
+        facts["shell_after_settle"] = facts["shell"]
         if base == "fedora":  # TestOS on Fedora is KDE
             facts["kde_launcher_icon"] = ["linuxlive-logo"]
         markers.append("LINUXLIVE_SESSION_READY")
@@ -152,6 +153,11 @@ BREAKS = {
         "initramfs carries the linuxlive text splash and not Ubuntu's",
     ),
     "app missing": (*_set_fact(SESSION_MODE, "flatpak", ["org.mozilla.firefox"]), "Flatpak org.videolan.VLC (VLC) is installed"),
+    "shell crashed after starting": (
+        f"modes/{SESSION_MODE}/result.json",
+        lambda d: d["facts"].update(shell_after_settle=["none"], session_error=["cinnamon[812]: segfault at 0 ip 00007f"]),
+        "desktop shell still running 30 s after login: 'none', expected 'gnome-shell'; session errors: cinnamon[812]: segfault",
+    ),
     "Ubuntu logo on the dock": (*_set_fact(SESSION_MODE, "dock_show_apps_icon", ["ubuntu"]), "dock's Show Apps icon is 'ubuntu'"),
     "dock icon not reported": (*_set_fact(SESSION_MODE, "dock_show_apps_icon", []), "dock's Show Apps icon is None"),
     "/etc/issue names Ubuntu": (*_set_fact(SESSION_MODE, "issue", ["Ubuntu 26.04 LTS \\n \\l"]), "/etc/issue begins 'Ubuntu 26.04 LTS"),

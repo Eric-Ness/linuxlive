@@ -111,6 +111,19 @@ launcher_icons_in() {
 		}' "$1" | sed 's/ $//'
 }
 
+# Error lines from a user's X session log, their journal and the kernel's
+# (which logs segfaults), for a desktop shell that crashed.
+session_errors() {
+	home=$(getent passwd "$1" | cut -d: -f6)
+	uid=$(id -u "$1")
+	{
+		if [ -f "$home/.xsession-errors" ]; then tail -n 300 "$home/.xsession-errors"; fi
+		journalctl -b --no-pager -o cat "_UID=$uid" 2>/dev/null | tail -n 500
+		journalctl -k -b --no-pager -o cat 2>/dev/null | grep -i segfault | tail -n 5
+	} | grep -iE 'error|critical|fatal|segfault|crash|traceback|assert' | tail -n 12 |
+		while IFS= read -r line; do fact session_error "$line"; done
+}
+
 # Plasma saves the layout a little after the login script changes it, so give
 # it up to two minutes to show the distro logo before reporting what is there.
 kde_launcher_icons() {
@@ -159,6 +172,16 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 				while IFS= read -r line; do fact avc "$line"; done
 		fi
 		say LINUXLIVE_SESSION_READY
+		# A desktop shell can start and then crash (Cinnamon then shows its
+		# fallback-mode dialog). Look again once the session has settled, and
+		# keep the session's own error lines if the shell is gone.
+		sleep 30
+		if pgrep -u "$user" -x "$shell" >/dev/null 2>&1; then
+			fact shell_after_settle "$shell"
+		else
+			fact shell_after_settle none
+			session_errors "$user"
+		fi
 		exit 0
 	done
 	sleep 5

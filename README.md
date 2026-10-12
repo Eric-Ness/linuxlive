@@ -169,16 +169,21 @@ Cinnamon on both:
   an X11 session on both bases.
 - Screenshots show the spec's wallpaper on all three desktops. On Fedora's
   KDE the accent colour shows too, and KDE's welcome window greets the user
-  with the spec's name and logo. On Cinnamon the logo is the menu button.
-  Ubuntu's GNOME screenshot has nothing accent-coloured on screen, so its
-  accent setting is only checked in the compiled output.
+  with the spec's name and logo. On KDE the logo is the application launcher,
+  and on Cinnamon the menu button. Ubuntu's GNOME screenshot has nothing
+  accent-coloured on screen, so its accent setting is only checked in the
+  compiled output.
+- Ubuntu's and Fedora's logos, which are their trademarks, are replaced.
+  Fedora images swap `fedora-logos` for Fedora's own neutral `generic-logos`.
+  KDE's launcher shows the spec's logo instead of Fedora's, Ubuntu's dock
+  shows GNOME's grid icon instead of the Ubuntu logo for Show Apps, and
+  Ubuntu's `/etc/issue` names the spec's distro. The boot check reports each
+  of these and the verifier checks them.
 
 What it did not prove, or found broken:
 
 - There is no installer yet; every ISO is live only. Fedora's KDE welcome
   window offers to launch an installer that the image does not contain.
-- Some upstream logos remain: the app grid button in Ubuntu's GNOME dock and
-  the application launcher icon in Fedora's KDE panel.
 - In Fedora live sessions `mcelog.service` fails because QEMU does not emulate
   machine-check hardware. Three of the seven green Fedora KDE runs so far
   logged one SELinux denial: systemd reading a uevent socket that was opened
