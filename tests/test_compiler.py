@@ -6,10 +6,11 @@ import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 
-from linuxlive.catalog import load_catalog
+from linuxlive.catalog import DATA_DIR, CatalogError, load_catalog, parse_catalog
 from linuxlive.compiler import CompileError, build_context, compile_spec
-from linuxlive.compiler.plan import nearest_gnome_accent, volume_id
+from linuxlive.compiler.plan import LOGO_NAME, nearest_gnome_accent, volume_id
 from linuxlive.spec import load_spec
 from tests.conftest import EXAMPLES, ROOT, spec_data, tiny_jpeg, write_spec
 
@@ -45,7 +46,7 @@ ONLY = {
         "rootfs/usr/lib/tmpfiles.d/linuxlive-livesys.conf",
     ],
     "gnome": ["rootfs/usr/share/glib-2.0/schemas/zz_linuxlive.gschema.override"],
-    "kde": ["rootfs/etc/xdg/autostart/linuxlive-wallpaper.desktop", "rootfs/usr/libexec/linuxlive/kde-apply-wallpaper"],
+    "kde": ["rootfs/etc/xdg/autostart/linuxlive-branding.desktop", "rootfs/usr/libexec/linuxlive/kde-apply-branding"],
     "cinnamon": [
         "rootfs/usr/share/glib-2.0/schemas/zz_linuxlive.gschema.override",
         "rootfs/etc/lightdm/lightdm.conf.d/90-linuxlive.conf",
@@ -292,3 +293,37 @@ def test_bootcheck_waits_for_every_catalog_desktop_shell(workspace):
     (loop,) = [line for line in bootcheck.splitlines() if line.strip().startswith("for proc in")]
     shells = set(loop.split("in", 1)[1].rstrip("; do").split())
     assert {d.shell_process for d in load_catalog().desktops.values()} <= shells
+
+
+@pytest.mark.parametrize("desktop", ["gnome", "kde", "cinnamon"])
+def test_fedora_swaps_its_logos_for_generic_logos(workspace, desktop):
+    ctx, plan = build_context(load_spec(write_spec(workspace, spec_data(base="fedora", desktop=desktop))))
+    containerfile = text(ctx, "Containerfile")
+    assert ("fedora-logos", "generic-logos") in plan.base.replaced_packages
+    for old, new in plan.base.replaced_packages:
+        assert f"if rpm -q --quiet {old}; then dnf -y swap {old} {new}; fi;" in containerfile
+    # After the desktop's packages, which could bring the logos in, and before branding.
+    assert containerfile.index("dnf -y swap fedora-logos") < containerfile.index("COPY rootfs/ /")
+    if "# Desktop:" in containerfile:
+        assert containerfile.index("# Desktop:") < containerfile.index("dnf -y swap fedora-logos")
+
+
+def test_ubuntu_has_nothing_to_swap(workspace):
+    ctx, plan = build_context(load_spec(write_spec(workspace, spec_data())))
+    assert plan.base.replaced_packages == ()
+    assert "swap" not in text(ctx, "Containerfile")
+
+
+def test_replaced_packages_must_map_names_to_names():
+    raw = yaml.safe_load((DATA_DIR / "catalog.yaml").read_text(encoding="utf-8"))
+    raw["bases"]["fedora"]["replaced_packages"] = ["fedora-logos"]
+    with pytest.raises(CatalogError, match="replaced_packages must map"):
+        parse_catalog(raw)
+
+
+def test_branding_env_names_the_logo_icon(workspace):
+    ctx, _ = build_context(load_spec(write_spec(workspace, spec_data(base="fedora", desktop="kde"))))
+    env = text(ctx, "rootfs/usr/lib/linuxlive/branding.env")
+    assert f"LL_LOGO_ICON={LOGO_NAME}\n" in env or f"LL_LOGO_ICON='{LOGO_NAME}'\n" in env
+    script = text(ctx, "rootfs/usr/libexec/linuxlive/kde-apply-branding")
+    assert "writeConfig('icon', '$LL_LOGO_ICON')" in script

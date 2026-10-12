@@ -50,10 +50,17 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         "initrd_plymouth_themes": ["linuxlive linuxlive-text spinner" if base == "ubuntu" else "details linuxlive text"],
         "selinux": ["absent" if base == "ubuntu" else "Enforcing"],
         "flatpak": ["org.mozilla.firefox", "org.videolan.VLC"],
+        "issue": ["TestOS 0.1 \\n \\l" if base == "ubuntu" else "\\S"],
     }
+    if base == "ubuntu":
+        facts["dock_show_apps_icon"] = ["generic"]
+    else:
+        facts["fedora_logo_packages"] = ["none"]
     markers = ["LINUXLIVE_BOOTCHECK_START", "LINUXLIVE_BOOTED"]
     if session:
         facts["shell"] = ["gnome-shell" if base == "ubuntu" else "plasmashell"]
+        if base == "fedora":  # TestOS on Fedora is KDE
+            facts["kde_launcher_icon"] = ["linuxlive-logo"]
         markers.append("LINUXLIVE_SESSION_READY")
     return {
         "mode": mode,
@@ -145,6 +152,9 @@ BREAKS = {
         "initramfs carries the linuxlive text splash and not Ubuntu's",
     ),
     "app missing": (*_set_fact(SESSION_MODE, "flatpak", ["org.mozilla.firefox"]), "Flatpak org.videolan.VLC (VLC) is installed"),
+    "Ubuntu logo on the dock": (*_set_fact(SESSION_MODE, "dock_show_apps_icon", ["ubuntu"]), "dock's Show Apps icon is 'ubuntu'"),
+    "dock icon not reported": (*_set_fact(SESSION_MODE, "dock_show_apps_icon", []), "dock's Show Apps icon is None"),
+    "/etc/issue names Ubuntu": (*_set_fact(SESSION_MODE, "issue", ["Ubuntu 26.04 LTS \\n \\l"]), "/etc/issue begins 'Ubuntu 26.04 LTS"),
     "no screenshots": (f"modes/{SESSION_MODE}/result.json", lambda d: d.update(screenshots=[]), "measured no screenshots"),
 }
 
@@ -172,6 +182,23 @@ def test_selinux_must_be_enforcing_on_fedora(tmp_path):
     edit_json(results / rel, change)
     found = failures(verify_results(load("fedora"), results, expect_commit=COMMIT))
     assert any("SELinux is 'Permissive'" in f for f in found), found
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "expected"),
+    [
+        ("fedora_logo_packages", ["fedora-logos"], "Fedora logo packages installed: 'fedora-logos'"),
+        ("fedora_logo_packages", [], "Fedora logo packages installed: None"),
+        ("kde_launcher_icon", ["start-here"], "KDE launcher icon is 'start-here'"),
+        ("kde_launcher_icon", ["none"], "KDE launcher icon is 'none'"),
+    ],
+)
+def test_fedora_and_kde_branding_must_be_the_distros(tmp_path, key, value, expected):
+    results = make_results(tmp_path / "r", "fedora")
+    rel, change = _set_fact(SESSION_MODE, key, value)
+    edit_json(results / rel, change)
+    found = failures(verify_results(load("fedora"), results, expect_commit=COMMIT))
+    assert any(expected in f for f in found), found
 
 
 def test_checks_can_be_run_separately(tmp_path):

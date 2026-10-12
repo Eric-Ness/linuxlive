@@ -56,6 +56,7 @@ def add_branding(ctx: BuildContext, plan: Plan) -> None:
                 "LL_DESKTOP": plan.desktop.id,
                 "LL_WALLPAPER": plan.wallpaper_path,
                 "LL_LOGO": f"/usr/share/pixmaps/{LOGO_NAME}.png",
+                "LL_LOGO_ICON": LOGO_NAME,
                 "LL_ACCENT_RGB": accent_rgb,
             }
         ),

@@ -26,6 +26,8 @@ class Base:
     kernel_packages: tuple[str, ...]
     blocked_packages: tuple[str, ...]
     efi_packages: tuple[str, ...]
+    # Upstream package -> its neutral replacement, swapped when the image has it.
+    replaced_packages: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,14 @@ def _strings(value, where: str) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _pairs(value, where: str) -> tuple[tuple[str, str], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, dict) or not all(isinstance(k, str) and k and isinstance(v, str) and v for k, v in value.items()):
+        raise CatalogError(f"{where} must map package names to package names")
+    return tuple(value.items())
+
+
 def _require(mapping: dict, key: str, where: str) -> str:
     value = mapping.get(key)
     if not isinstance(value, str) or not value:
@@ -93,6 +103,7 @@ def parse_catalog(raw: dict) -> Catalog:
             kernel_packages=_strings(b.get("kernel_packages"), f"{where}.kernel_packages"),
             blocked_packages=_strings(b.get("blocked_packages"), f"{where}.blocked_packages"),
             efi_packages=_strings(b.get("efi_packages"), f"{where}.efi_packages"),
+            replaced_packages=_pairs(b.get("replaced_packages"), f"{where}.replaced_packages"),
         )
     desktops = {}
     for key, d in (raw.get("desktops") or {}).items():

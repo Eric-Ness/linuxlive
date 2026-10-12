@@ -76,7 +76,57 @@ fi
 for app in $(flatpak list --system --app --columns=application 2>/dev/null); do
 	fact flatpak "$app"
 done
+
+# Upstream branding that a distro which isn't Ubuntu or Fedora must not show.
+if command -v rpm >/dev/null 2>&1; then
+	logos=$(rpm -qa --qf '%{NAME} ' 'fedora-logos*' 2>/dev/null)
+	fact fedora_logo_packages "${logos:-none}"
+fi
+fact issue "$(head -n 1 /etc/issue 2>/dev/null)"
+yaru=/usr/share/icons/Yaru/scalable/actions
+if [ -e "$yaru/view-app-grid-ubuntu-symbolic.svg" ]; then
+	# Ubuntu's dock draws Show Apps with this icon; Yaru ships it as the Ubuntu logo.
+	if cmp -s "$yaru/view-app-grid-ubuntu-symbolic.svg" "$yaru/view-app-grid-symbolic.svg"; then
+		fact dock_show_apps_icon generic
+	else
+		fact dock_show_apps_icon ubuntu
+	fi
+fi
 say LINUXLIVE_BOOTED
+
+# The icons a user's Plasma application launchers show, from Plasma's saved
+# layout: a launcher section names the plugin, and its [Configuration][General]
+# subsection holds the icon ("default" when the launcher keeps its own).
+launcher_icons_in() {
+	[ -f "$1" ] || return 0
+	awk '
+		/^\[/ { section = $0; next }
+		/^plugin=org\.kde\.plasma\.(kickoff|kicker|kickerdash)$/ { launcher[section] = 1 }
+		/^icon=/ { icon[section] = substr($0, 6) }
+		END {
+			for (s in launcher) {
+				g = s "[Configuration][General]"
+				printf "%s ", ((g in icon) ? icon[g] : "default")
+			}
+		}' "$1" | sed 's/ $//'
+}
+
+# Plasma saves the layout a little after the login script changes it, so give
+# it up to two minutes to show the distro logo before reporting what is there.
+kde_launcher_icons() {
+	# shellcheck disable=SC2154 # LL_LOGO_ICON comes from branding.env
+	want=$(. /usr/lib/linuxlive/branding.env && printf '%s' "$LL_LOGO_ICON")
+	rc="$(getent passwd "$1" | cut -d: -f6)/.config/plasma-org.kde.plasma.desktop-appletsrc"
+	found=""
+	tries=0
+	while [ "$tries" -lt 60 ]; do
+		found=$(launcher_icons_in "$rc")
+		case " $found " in *" $want "*) break ;; esac
+		tries=$((tries + 1))
+		sleep 2
+	done
+	printf '%s' "${found:-none}"
+}
 
 # Wait for an active graphical user session with its desktop shell running.
 deadline=$(($(date +%s) + 2700))
@@ -99,6 +149,9 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		fact session_desktop "$(loginctl show-session "$session" -p Desktop --value 2>/dev/null)"
 		fact session_user "$user"
 		fact shell "$shell"
+		if [ "$shell" = plasmashell ]; then
+			fact kde_launcher_icon "$(kde_launcher_icons "$user")"
+		fi
 		fact failed_units "$(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | tr '\n' ' ')"
 		if [ -d /sys/fs/selinux ]; then
 			fact avc_denials "$(journalctl -k -b --no-pager 2>/dev/null | grep -c 'avc:  denied')"

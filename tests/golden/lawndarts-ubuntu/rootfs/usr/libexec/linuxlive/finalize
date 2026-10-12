@@ -92,6 +92,23 @@ refresh_icon_cache() {
 	fi
 }
 
+# Ubuntu's name and logos are Canonical's trademarks. Ubuntu's dock draws its
+# Show Apps button with Yaru's view-app-grid-ubuntu-symbolic icon, a link to
+# the Ubuntu logo; give it GNOME's grid icon instead, diverted so package
+# upgrades keep ours. Text consoles greet with /etc/issue, which names Ubuntu.
+debrand_ubuntu() {
+	icons=/usr/share/icons/Yaru/scalable/actions
+	ubuntu_icon=$icons/view-app-grid-ubuntu-symbolic.svg
+	if [ -e "$ubuntu_icon" ] && [ -f "$icons/view-app-grid-symbolic.svg" ]; then
+		dpkg-divert --quiet --local --rename --divert "$ubuntu_icon.ubuntu" --add "$ubuntu_icon"
+		cp "$icons/view-app-grid-symbolic.svg" "$ubuntu_icon"
+		log "dock: GNOME's Show Apps icon instead of the Ubuntu logo"
+	fi
+	printf '%s %s \\n \\l\n\n' "$LL_NAME" "$LL_VERSION" >/etc/issue
+	printf '%s %s\n' "$LL_NAME" "$LL_VERSION" >/etc/issue.net
+	log "/etc/issue: $LL_NAME $LL_VERSION"
+}
+
 compile_schemas() {
 	log_file=$(mktemp)
 	if ! glib-compile-schemas /usr/share/glib-2.0/schemas 2>"$log_file"; then
@@ -192,6 +209,9 @@ clean_up() {
 chmod 0755 /usr/libexec/linuxlive/*
 rewrite_os_release
 install_plymouth_theme
+if [ "$LL_BASE" = ubuntu ]; then
+	debrand_ubuntu
+fi
 refresh_icon_cache
 case "$LL_DESKTOP" in
 gnome) brand_gnome ;;

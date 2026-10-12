@@ -31,6 +31,17 @@ RUN set -eux; \\
     dnf -y install {' '.join(plan.variant.packages)}; \\
     dnf clean all
 """
+    debrand = ""
+    if plan.base.replaced_packages:
+        swaps = "".join(
+            f"    if rpm -q --quiet {old}; then dnf -y swap {old} {new}; fi; \\\n" for old, new in plan.base.replaced_packages
+        )
+        debrand = f"""
+# Fedora's logos are Fedora's trademarks; a distro that isn't Fedora uses
+# Fedora's neutral replacements instead.
+RUN set -eux; \\
+{swaps}    dnf clean all
+"""
     return f"""{header_comment(plan)}
 # {plan.desktop.label} on Fedora Atomic. This is a bootc image: installed
 # systems take updates by pulling new builds of it.
@@ -40,7 +51,7 @@ FROM {plan.base_image}
 RUN set -eux; \\
     dnf -y install {packages}; \\
     dnf clean all
-{desktop}
+{desktop}{debrand}
 COPY rootfs/ /
 
 # Keep a copy of the signed Secure Boot chain where the ISO assembler looks for it.

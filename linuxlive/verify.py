@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from linuxlive.catalog import Catalog, load_catalog
-from linuxlive.compiler.plan import Plan, plan_build
+from linuxlive.compiler.plan import LOGO_NAME, Plan, plan_build
 from linuxlive.png import ImageError, dominant_hue, hue_fraction, image_info, read_png
 from linuxlive.spec import Spec
 
@@ -143,6 +143,26 @@ def wallpaper_hue(spec: Spec) -> float:
     return hue
 
 
+def _check_upstream_branding(c: _Collector, plan: Plan, result: dict) -> None:
+    """Ubuntu's and Fedora's logos are their trademarks; the distro shows its own."""
+    spec = plan.spec
+    if plan.base.id == "fedora":
+        logos = _fact(result, "fedora_logo_packages")
+        c.expect(logos == "none", f"Fedora logo packages installed: {logos!r}, expected 'none'")
+    if plan.base.id == "ubuntu":
+        issue = _fact(result, "issue") or ""
+        c.expect(
+            issue.startswith(f"{spec.name} {spec.version} "),
+            f"/etc/issue begins {issue!r}, expected {spec.name + ' ' + spec.version!r}",
+        )
+        if plan.desktop.id == "gnome":
+            icon = _fact(result, "dock_show_apps_icon")
+            c.expect(icon == "generic", f"dock's Show Apps icon is {icon!r}, expected GNOME's grid ('generic'), not the Ubuntu logo")
+    if plan.desktop.id == "kde":
+        icons = _fact(result, "kde_launcher_icon")
+        c.expect(icons == LOGO_NAME, f"KDE launcher icon is {icons!r}, expected the distro logo {LOGO_NAME!r}")
+
+
 def check_session(plan: Plan, results: Path) -> list[Outcome]:
     spec = plan.spec
     c = _Collector("session")
@@ -183,6 +203,7 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
         c.expect(app.flatpak in installed, f"Flatpak {app.flatpak} ({app.name}) is installed")
     if plan.base.id == "fedora":
         c.expect(_fact(result, "selinux") == "Enforcing", f"SELinux is {_fact(result, 'selinux')!r}, expected 'Enforcing'")
+    _check_upstream_branding(c, plan, result)
 
     try:
         hue = wallpaper_hue(spec)

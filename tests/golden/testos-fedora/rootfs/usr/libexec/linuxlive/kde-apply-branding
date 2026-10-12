@@ -1,0 +1,68 @@
+#!/bin/sh
+# Applies the distro's wallpaper and launcher logo once per user, on their
+# first Plasma login.
+#
+# Plasma has no system-wide default for either that survives every distro's
+# look-and-feel package (Fedora's sets the launcher to its own logo), so this
+# runs from XDG autostart and asks plasmashell to apply them. Marker files
+# keep it from overriding a wallpaper or icon the user picks later.
+
+# shellcheck disable=SC2154 # LL_* settings come from /usr/lib/linuxlive/branding.env
+# shellcheck source=/dev/null
+. /usr/lib/linuxlive/branding.env
+
+config="${XDG_CONFIG_HOME:-$HOME/.config}"
+
+# Runs a command until it succeeds, for up to two minutes while plasmashell starts.
+retry() {
+	tries=0
+	while [ "$tries" -lt 60 ]; do
+		"$@" >/dev/null 2>&1 && return 0
+		tries=$((tries + 1))
+		sleep 2
+	done
+	return 1
+}
+
+# Points every application launcher (Kickoff, Kicker, Application Dashboard)
+# at the distro logo. The script fails while the panel has no launcher yet,
+# and plasmashell returns that as a D-Bus error, so retry waits for the panel.
+set_launcher_icon() {
+	busctl --user call org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell evaluateScript s "
+var found = 0;
+panels().forEach(function (panel) {
+	panel.widgets().forEach(function (widget) {
+		if (['org.kde.plasma.kickoff', 'org.kde.plasma.kicker', 'org.kde.plasma.kickerdash'].indexOf(widget.type) < 0) return;
+		widget.currentConfigGroup = ['General'];
+		widget.writeConfig('icon', '$LL_LOGO_ICON');
+		if (typeof widget.reloadConfig === 'function') widget.reloadConfig();
+		found += 1;
+	});
+});
+if (found === 0) throw new Error('no application launcher yet');
+"
+}
+
+mark() {
+	mkdir -p "$config"
+	: >"$config/$1"
+}
+
+status=0
+if [ ! -e "$config/linuxlive-wallpaper-applied" ]; then
+	if retry plasma-apply-wallpaperimage "$LL_WALLPAPER"; then
+		mark linuxlive-wallpaper-applied
+	else
+		echo "linuxlive: could not apply the wallpaper" >&2
+		status=1
+	fi
+fi
+if [ ! -e "$config/linuxlive-launcher-applied" ]; then
+	if retry set_launcher_icon; then
+		mark linuxlive-launcher-applied
+	else
+		echo "linuxlive: could not set the launcher icon" >&2
+		status=1
+	fi
+fi
+exit "$status"

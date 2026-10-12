@@ -84,7 +84,8 @@ def main() -> int:
     for app in catalog.apps.values():
         checks.append((f"flatpak {app.flatpak}", lambda a=app.flatpak: flathub(a)))
     for base in catalog.bases.values():
-        packages = [*base.system_packages, *base.live_packages, *base.kernel_packages, *base.efi_packages]
+        replacements = [new for _old, new in base.replaced_packages]
+        packages = [*base.system_packages, *base.live_packages, *base.kernel_packages, *base.efi_packages, *replacements]
         for desktop in catalog.desktops.values():
             variant = desktop.variants.get(base.id)
             if variant:

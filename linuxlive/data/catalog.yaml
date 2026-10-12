@@ -29,6 +29,12 @@ bases:
     release: "44"
     # Live boot (dmsquash-live), live session setup (livesys) and the boot splash.
     system_packages: [dracut-live, livesys-scripts, plymouth-theme-spinner, plymouth-plugin-two-step]
+    # Fedora's trademark guidelines ask a distribution that isn't Fedora to
+    # replace Fedora's logos; generic-logos is Fedora's own neutral set.
+    # Each is swapped only when the base image has it.
+    replaced_packages:
+      fedora-logos: generic-logos
+      fedora-logos-httpd: generic-logos-httpd
 
 desktops:
   gnome:
