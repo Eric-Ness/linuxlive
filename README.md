@@ -57,14 +57,21 @@ python -m linuxlive validate examples/testos-ubuntu.yaml
    compresses it to squashfs and writes a hybrid ISO: El Torito for optical
    media, MBR and GPT for USB sticks, the base's own signed shim and GRUB for
    Secure Boot. Ubuntu boots live through casper, Fedora through dracut's
-   dmsquash-live.
+   dmsquash-live. Ubuntu ISOs also carry `md5sum.txt` for casper's medium
+   check.
 4. **Boot it.** `scripts/boottest.py` boots the ISO in QEMU. Every image
    ships a small service, `linuxlive-bootcheck`, that reports to the serial
    port when (and only when) QEMU passes a test flag: OS name, firmware,
-   Secure Boot state, installed Flatpaks, boot splash, desktop shell.
+   Secure Boot state, installed Flatpaks, boot splash, desktop shell, failed
+   system services and update notifiers.
 5. **Verify.** `python -m linuxlive verify-results` checks those reports and
    the screenshots against the spec. A run that boots the wrong name, the
-   upstream boot splash or a desktop without the spec's wallpaper fails.
+   upstream boot splash, a failed system service or a desktop without the
+   spec's wallpaper fails.
+
+When booted from the ISO, a live-only service, `linuxlive-live`, turns off
+update notifiers (nothing installed in a live session survives shutdown) and
+stops KDE's welcome window offering an installer the image doesn't have.
 
 Branding covers the OS name in os-release, `IMAGE_ID` and `IMAGE_VERSION`, the
 wallpaper (desktop, lock screen and, on KDE and Cinnamon, the login screen),
@@ -179,25 +186,27 @@ Cinnamon on both:
   shows GNOME's grid icon instead of the Ubuntu logo for Show Apps, and
   Ubuntu's `/etc/issue` names the spec's distro. The boot check reports each
   of these and the verifier checks them.
+- No system service fails in any live session, at login or 30 seconds later,
+  and CI fails if one does. Run 38249801807 (v0.1.2) showed it on all four
+  examples. Ubuntu's own medium check (`casper-md5check`) read the 297
+  checksums in each Ubuntu ISO's `md5sum.txt` and passed. `mcelog`, which
+  failed in 46 of the 51 Fedora boots CI recorded before v0.1.2, no longer
+  starts in virtual machines.
+- Live sessions start no update notifiers, and GNOME Software doesn't check
+  for updates. On Fedora's KDE the welcome window no longer offers to start
+  an installer.
 
 What it did not prove, or found broken:
 
-- There is no installer yet; every ISO is live only. Fedora's KDE welcome
-  window offers to launch an installer that the image does not contain.
-- In Fedora live sessions `mcelog.service` fails because QEMU does not emulate
-  machine-check hardware. Three of the seven green Fedora KDE runs so far
-  logged one SELinux denial: systemd reading a uevent socket that was opened
-  before the policy loaded. It looks like a harmless early-boot race but has
-  not been confirmed. The one Fedora Cinnamon run so far logged none.
-- Ubuntu live sessions run `casper-md5check`, which exits with an error when
-  the medium has no `md5sum.txt`, and linuxlive's ISOs have none. It runs late
-  at idle priority, so the boot check only sometimes sees it fail; the
-  2026-10-11 run is the first to report it, on both Ubuntu builds. Writing
-  `md5sum.txt` into Ubuntu ISOs would fix it.
-- The Fedora Cinnamon live session reports `plymouth-start.service` failed.
-  The cause is not known yet; the linuxlive splash is in its initramfs.
-- The Ubuntu GNOME live session pops up a "Software updates available"
-  notification. Fedora's live setup turns that off; Ubuntu's does not yet.
+- There is no installer yet; every ISO is live only.
+- Three of the seven green Fedora KDE runs up to 2026-10-11 logged one
+  SELinux denial: systemd reading a uevent socket that was opened before the
+  policy loaded. It looks like a harmless early-boot race but has not been
+  confirmed. Of the six Fedora Cinnamon runs whose results are still kept,
+  one boot (run 38174303533) logged a denial and the rest logged none.
+- An earlier Fedora Cinnamon run reported `plymouth-start.service` failed.
+  It hasn't happened in the four runs since, and CI now fails if it does.
+  The cause is not known.
 - Fedora's initramfs is about 265 MB because one image serves both live and
   installed boots without host-only trimming.
 - CI boot-tests GNOME on Ubuntu, KDE on Fedora and Cinnamon on both. GNOME on
