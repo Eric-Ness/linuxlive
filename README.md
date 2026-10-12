@@ -8,6 +8,13 @@ included, from a DVD or a USB stick.
 This is the open-source build pipeline behind linuxlive.com. It works end to
 end for two bases, Ubuntu and Fedora, with three desktops.
 
+**To make your own distro, you don't need this repository.** Start from the
+template [Eric-Ness/linuxlive-distro](https://github.com/Eric-Ness/linuxlive-distro):
+click **Use this template**, edit `linuxlive.yaml`, swap in your art and push.
+GitHub Actions builds the ISO, boots it five ways and checks it, through this
+repository's reusable workflow. The
+[wiki](https://github.com/Eric-Ness/linuxlive/wiki) walks through it.
+
 ## A spec
 
 ```yaml
@@ -106,6 +113,14 @@ Secure Boot from CD, UEFI from CD, BIOS from CD and BIOS from USB. Its
 `results-<example>` artifact holds the logs, screenshots and per-boot
 `result.json` files. Start the workflow by hand with `keep_iso` to download
 the ISOs too.
+
+The build job is the reusable workflow
+[.github/workflows/build.yml](.github/workflows/build.yml), the same one the
+template calls. spike runs it with the pipeline at its own commit; a caller
+pinned to a release tag gets that release's pipeline, because the workflow's
+`linuxlive-ref` input defaults to the tag. When you bump the version in
+`pyproject.toml`, change that default to match (a test checks it), then tag
+the release commit `v<version>`.
 
 Commits that change only README.md do not start a run.
 

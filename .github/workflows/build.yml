@@ -1,0 +1,225 @@
+# Builds one distro spec into a live ISO, boots it in QEMU in five firmware and
+# media modes, and checks the result against the spec. Any repository can call
+# it; the template repository Eric-Ness/linuxlive-distro does:
+#
+#   jobs:
+#     build:
+#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.1.0
+#
+# The calling repository holds the spec and its art. The pipeline itself is
+# checked out from linuxlive-repository at linuxlive-ref, which defaults to the
+# release this file belongs to, so a caller pinned to a tag gets that tag's
+# pipeline. linuxlive's own CI (spike.yml) passes its own commit instead.
+#
+# Artifacts: results-<name> (logs, screenshots and result.json files, which
+# `python -m linuxlive verify-results` re-checks) and, with keep-iso,
+# iso-<name> (the ISO and its SHA-256).
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      spec:
+        description: Path of the spec file in the calling repository
+        type: string
+        default: linuxlive.yaml
+      name:
+        description: Base name for the ISO and artifacts (default the spec's id)
+        type: string
+        default: ""
+      keep-iso:
+        description: Upload the ISO as an artifact
+        type: boolean
+        default: true
+      iso-retention-days:
+        description: Days to keep the ISO artifact
+        type: number
+        default: 7
+      linuxlive-repository:
+        description: Repository the pipeline is checked out from
+        type: string
+        default: Eric-Ness/linuxlive
+      linuxlive-ref:
+        description: Pipeline version to build with (a tag, branch or commit)
+        type: string
+        # Changed with each release; tests/test_workflows.py checks it matches pyproject.toml.
+        default: v0.1.0
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    permissions:
+      contents: read
+    env:
+      # The pipeline runs from its checkout; the spec comes from the caller's.
+      PYTHONPATH: ${{ github.workspace }}/linuxlive
+      SPEC: distro/${{ inputs.spec }}
+      RESULTS: build/results
+    steps:
+      - name: Check out the distro
+        uses: actions/checkout@v7
+        with:
+          path: distro
+          persist-credentials: false
+
+      - name: Check out linuxlive
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.linuxlive-repository }}
+          ref: ${{ inputs.linuxlive-ref }}
+          path: linuxlive
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r linuxlive/requirements.txt
+
+      - name: Check the spec
+        env:
+          NAME_INPUT: ${{ inputs.name }}
+          SPEC_INPUT: ${{ inputs.spec }}
+          LINUXLIVE_REPOSITORY: ${{ inputs.linuxlive-repository }}
+          LINUXLIVE_REF: ${{ inputs.linuxlive-ref }}
+        run: |
+          python -m linuxlive validate "$SPEC"
+          mkdir -p "$RESULTS"
+          # Names come from the spec, so pass them on through files, never through the shell.
+          python - <<'PY'
+          import json, os, re, subprocess
+          from linuxlive.spec import load_spec
+
+          spec = load_spec(os.environ["SPEC"])
+          name = os.environ["NAME_INPUT"] or spec.id
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name):
+              raise SystemExit(f"name {name!r}: use letters, digits, dots, dashes and underscores")
+          pipeline = subprocess.run(["git", "-C", "linuxlive", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+          meta = {
+              "commit": os.environ["GITHUB_SHA"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "base": spec.base,
+              "spec": os.environ["SPEC_INPUT"],
+              "linuxlive": {"repository": os.environ["LINUXLIVE_REPOSITORY"], "ref": os.environ["LINUXLIVE_REF"], "commit": pipeline},
+          }
+          with open(os.path.join(os.environ["RESULTS"], "meta.json"), "w") as f:
+              json.dump(meta, f, indent=2)
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"NAME={name}\nIMAGE=localhost/linuxlive-{name.lower()}:ci\nISO=build/{name}.iso\n")
+          print(f"Building {spec.name} {spec.version} ({spec.base}, {spec.desktop}) as {name}, with linuxlive {pipeline[:12]}")
+          PY
+          cat "$RESULTS/meta.json"
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force > /dev/null || true
+          df -h /
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf squashfs-tools xorriso grub-pc-bin grub-common mtools dosfstools
+          podman --version
+          qemu-system-x86_64 --version | head -n 1
+          nproc; free -g
+
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+              | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+            ls -l /dev/kvm
+          else
+            echo "::warning::No /dev/kvm on this runner; QEMU will emulate the CPU, which is slow"
+          fi
+
+      - name: Compile spec
+        run: python -m linuxlive compile "$SPEC" -o build/ctx
+
+      - name: Build image
+        run: sudo podman build --pull=newer --tag "$IMAGE" build/ctx
+
+      - name: Assemble ISO
+        run: |
+          sudo LL_SQUASHFS_LEVEL=9 LL_RMI_AFTER=1 bash linuxlive/scripts/assemble-iso.sh build/ctx "$IMAGE" "$ISO"
+          sudo chown "$(id -u):$(id -g)" "$ISO" "$ISO.sha256"
+          df -h /
+
+      - name: Inspect ISO
+        run: |
+          python -m linuxlive inspect-iso "$ISO" --json "$RESULTS/iso.json" > /dev/null
+          cat "$RESULTS/iso.json"
+
+      - name: Boot tests
+        run: |
+          python linuxlive/scripts/boottest.py --iso "$ISO" --mode uefi-usb --session --out "$RESULTS/modes/uefi-usb" || true
+          # If the first boot never reached userspace the rest will not either;
+          # skip them rather than spend hours timing out.
+          if grep -q LINUXLIVE_BOOTCHECK_START "$RESULTS/modes/uefi-usb/serial.log" 2>/dev/null; then
+            for mode in uefi-sb-cd uefi-cd bios-cd bios-usb; do
+              python linuxlive/scripts/boottest.py --iso "$ISO" --mode "$mode" --out "$RESULTS/modes/$mode" || true
+            done
+          else
+            echo "::error::The first boot never reached userspace; skipped the other boot modes"
+          fi
+
+      - name: Verify
+        run: python -m linuxlive verify-results --spec "$SPEC" --results "$RESULTS" --expect-commit "$GITHUB_SHA" | tee build/verify.txt
+
+      - name: Summary
+        if: always()
+        env:
+          KEEP_ISO: ${{ inputs.keep-iso }}
+          RETENTION: ${{ inputs.iso-retention-days }}
+        run: |
+          {
+            echo "## linuxlive build: ${NAME:-not started}"
+            if [ -f build/verify.txt ] && grep -q '^VERIFY OK' build/verify.txt; then
+              echo "Built, booted in five modes and verified: $(tail -n 1 build/verify.txt)."
+            else
+              echo "The build or a check failed. Open the failed step above for the reason."
+            fi
+            if [ -f "${ISO:-none}" ] && [ "$KEEP_ISO" = "true" ]; then
+              echo
+              echo "Download **iso-$NAME** under Artifacts below (kept $RETENTION days). It holds the ISO and its SHA-256."
+            fi
+            if [ -f build/verify.txt ]; then
+              echo
+              echo '<details><summary>Every check</summary>'
+              echo
+              echo '```'
+              cat build/verify.txt
+              echo '```'
+              echo '</details>'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always() && env.NAME != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-${{ env.NAME }}
+          path: build/results
+          retention-days: 14
+
+      - name: Upload ISO
+        if: always() && inputs.keep-iso && env.NAME != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: iso-${{ env.NAME }}
+          path: |
+            build/*.iso
+            build/*.iso.sha256
+          retention-days: ${{ inputs.iso-retention-days }}
+          compression-level: 0
+          if-no-files-found: warn

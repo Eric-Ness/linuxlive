@@ -1,7 +1,8 @@
 # Builds every example spec into a live ISO and boots each one in QEMU.
 #
 # unit:   tests, shellcheck, and compiling every example
-# build:  per example: compile -> podman build -> assemble ISO -> inspect ->
+# build:  per example, through the reusable workflow build.yml at this commit:
+#         compile -> podman build -> assemble ISO -> inspect ->
 #         boot in five firmware/media modes -> verify against the spec
 #
 # The results artifact (logs, screenshots, result.json files) is what the
@@ -75,112 +76,17 @@ jobs:
   build:
     name: build (${{ matrix.example }})
     needs: unit
-    runs-on: ubuntu-24.04
-    timeout-minutes: 340
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {example: testos-ubuntu, base: ubuntu}
-          - {example: testos-fedora, base: fedora}
-          - {example: lawndarts-ubuntu, base: ubuntu}
-          - {example: lawndarts-fedora, base: fedora}
-    env:
-      SPEC: examples/${{ matrix.example }}.yaml
-      IMAGE: localhost/linuxlive-${{ matrix.example }}:ci
-      ISO: build/${{ matrix.example }}.iso
-      RESULTS: build/results
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements.txt
-
-      - name: Record run metadata
-        run: |
-          mkdir -p "$RESULTS"
-          printf '{"commit": "%s", "run_id": "%s", "base": "%s", "spec": "%s"}\n' \
-            "$GITHUB_SHA" "$GITHUB_RUN_ID" "${{ matrix.base }}" "$SPEC" > "$RESULTS/meta.json"
-
-      - name: Free disk space
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
-            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
-          sudo docker image prune --all --force > /dev/null || true
-          df -h /
-
-      - name: Install tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils ovmf squashfs-tools xorriso grub-pc-bin grub-common mtools dosfstools
-          podman --version
-          qemu-system-x86_64 --version | head -n 1
-          nproc; free -g
-
-      - name: Enable KVM
-        run: |
-          if [ -e /dev/kvm ]; then
-            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-              | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-            sudo udevadm control --reload-rules
-            sudo udevadm trigger --name-match=kvm
-            ls -l /dev/kvm
-          else
-            echo "::warning::No /dev/kvm on this runner; QEMU will emulate the CPU, which is slow"
-          fi
-
-      - name: Compile spec
-        run: python -m linuxlive compile "$SPEC" -o build/ctx
-
-      - name: Build image
-        run: sudo podman build --pull=newer --tag "$IMAGE" build/ctx
-
-      - name: Assemble ISO
-        run: |
-          sudo LL_SQUASHFS_LEVEL=9 LL_RMI_AFTER=1 bash scripts/assemble-iso.sh build/ctx "$IMAGE" "$ISO"
-          sudo chown "$(id -u):$(id -g)" "$ISO" "$ISO.sha256"
-          df -h /
-
-      - name: Inspect ISO
-        run: |
-          python -m linuxlive inspect-iso "$ISO" --json "$RESULTS/iso.json" > /dev/null
-          cat "$RESULTS/iso.json"
-
-      - name: Boot tests
-        run: |
-          python scripts/boottest.py --iso "$ISO" --mode uefi-usb --session --out "$RESULTS/modes/uefi-usb" || true
-          # If the first boot never reached userspace the rest will not either;
-          # skip them rather than spend hours timing out.
-          if grep -q LINUXLIVE_BOOTCHECK_START "$RESULTS/modes/uefi-usb/serial.log" 2>/dev/null; then
-            for mode in uefi-sb-cd uefi-cd bios-cd bios-usb; do
-              python scripts/boottest.py --iso "$ISO" --mode "$mode" --out "$RESULTS/modes/$mode" || true
-            done
-          else
-            echo "::error::The first boot never reached userspace; skipped the other boot modes"
-          fi
-
-      - name: Verify
-        run: python -m linuxlive verify-results --spec "$SPEC" --results "$RESULTS" --expect-commit "$GITHUB_SHA"
-
-      - name: Upload results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: results-${{ matrix.example }}
-          path: build/results
-          retention-days: 14
-
-      - name: Upload ISO
-        if: always() && inputs.keep_iso
-        uses: actions/upload-artifact@v7
-        with:
-          name: iso-${{ matrix.example }}
-          path: |
-            build/*.iso
-            build/*.iso.sha256
-          retention-days: 1
-          compression-level: 0
-          if-no-files-found: warn
+        # Each name is a spec in examples/.
+        example: [testos-ubuntu, testos-fedora, lawndarts-ubuntu, lawndarts-fedora]
+    uses: ./.github/workflows/build.yml
+    with:
+      spec: examples/${{ matrix.example }}.yaml
+      name: ${{ matrix.example }}
+      keep-iso: ${{ inputs.keep_iso == true }}
+      iso-retention-days: 1
+      # Build with the pipeline at this commit, not the release build.yml defaults to.
+      linuxlive-repository: ${{ github.repository }}
+      linuxlive-ref: ${{ github.sha }}

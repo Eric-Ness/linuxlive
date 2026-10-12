@@ -81,7 +81,8 @@ try {
     console.log(`run ${runId}: ${summary.passed} tests passed, shellcheck ok, ${summary.compiled.join(', ')} compiled`);
     console.log('CI GATE OK unit');
   } else {
-    const job = jobs.find((j) => j.name === `build (${target})`);
+    // Through the reusable workflow the job is named "build (<target>) / build".
+    const job = jobs.find((j) => j.name === `build (${target})` || j.name.startsWith(`build (${target}) /`));
     if (!job || job.status !== 'completed') fail(`build (${target}) job in run ${runId} is ${job?.status ?? 'missing'}`);
     const dl = run('gh', ['run', 'download', runId, '-R', repo, '-n', `results-${target}`, '-D', scratch]);
     if (dl.code !== 0) fail(`run ${runId} has no results-${target} artifact:\n${dl.out}`);
