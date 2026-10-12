@@ -34,6 +34,11 @@ def iso_report(layout: str) -> dict:
             "EFI/BOOT/mmx64.efi": 850_000,
             **payload,
         },
+        "md5sum": (
+            {"entries": 312, "mismatched": [], "missing": [], "unlisted": ["boot.catalog", "boot/grub/i386-pc/eltorito.img"]}
+            if layout == "casper"
+            else None
+        ),
     }
 
 
@@ -60,8 +65,15 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
     if session:
         facts["shell"] = ["gnome-shell" if base == "ubuntu" else "plasmashell"]
         facts["shell_after_settle"] = facts["shell"]
+        facts["failed_units"] = ["none"]
+        facts["failed_units_after_settle"] = ["none"]
+        facts["update_notifiers"] = ["none"]
+        facts["gnome_software_updates"] = ["false" if base == "ubuntu" else "absent"]
+        if base == "ubuntu":
+            facts["casper_md5check"] = ["pass"]
         if base == "fedora":  # TestOS on Fedora is KDE
             facts["kde_launcher_icon"] = ["linuxlive-logo"]
+            facts["plasma_welcome_installer"] = ["none"]
         markers.append("LINUXLIVE_SESSION_READY")
     return {
         "mode": mode,
@@ -130,6 +142,20 @@ BREAKS = {
     "no EFI partition": ("iso.json", lambda d: d["gpt"].update(esp=None), "GPT with an EFI system partition"),
     "squashfs missing": ("iso.json", lambda d: d["files"].pop("casper/filesystem.squashfs"), "casper/filesystem.squashfs is None"),
     "squashfs too small": ("iso.json", lambda d: d["files"].update({"casper/filesystem.squashfs": 1000}), "casper/filesystem.squashfs is 1000 bytes"),
+    "no md5sum.txt": ("iso.json", lambda d: d.update(md5sum=None), "md5sum.txt is on the ISO"),
+    "md5sum.txt not reported": ("iso.json", lambda d: d.pop("md5sum"), "md5sum.txt is on the ISO"),
+    "a checksum does not match": (
+        "iso.json",
+        lambda d: d["md5sum"].update(mismatched=["casper/filesystem.squashfs"]),
+        "mismatched: ['casper/filesystem.squashfs']",
+    ),
+    "a listed file is missing": ("iso.json", lambda d: d["md5sum"].update(missing=["casper/initrd"]), "missing: ['casper/initrd']"),
+    "an empty md5sum.txt": ("iso.json", lambda d: d["md5sum"].update(entries=0), "md5sum.txt lists 0 files"),
+    "a file md5sum.txt leaves out": (
+        "iso.json",
+        lambda d: d["md5sum"]["unlisted"].append("casper/vmlinuz"),
+        "also unlisted: ['casper/vmlinuz']",
+    ),
     "a mode timed out": ("modes/bios-usb/result.json", lambda d: d.update(outcome="timeout"), "bios-usb: reached userspace"),
     "Secure Boot off in the SB mode": (*_set_fact(SECURE_BOOT_MODE, "secureboot", ["0"]), "uefi-sb-cd: guest reports Secure Boot '0'"),
     "Secure Boot claimed without SB firmware": (*_set_fact("uefi-cd", "secureboot", ["1"]), "uefi-cd: guest reports Secure Boot '1'"),
@@ -162,6 +188,37 @@ BREAKS = {
     "dock icon not reported": (*_set_fact(SESSION_MODE, "dock_show_apps_icon", []), "dock's Show Apps icon is None"),
     "/etc/issue names Ubuntu": (*_set_fact(SESSION_MODE, "issue", ["Ubuntu 26.04 LTS \\n \\l"]), "/etc/issue begins 'Ubuntu 26.04 LTS"),
     "no screenshots": (f"modes/{SESSION_MODE}/result.json", lambda d: d.update(screenshots=[]), "measured no screenshots"),
+    "a unit failed": (
+        *_set_fact(SESSION_MODE, "failed_units", ["casper-md5check.service "]),
+        "no failed systemd units (failed_units: 'casper-md5check.service')",
+    ),
+    "a unit failed after login": (
+        *_set_fact(SESSION_MODE, "failed_units_after_settle", ["plymouth-start.service"]),
+        "no failed systemd units (failed_units_after_settle: 'plymouth-start.service')",
+    ),
+    "failed units not reported": (*_set_fact(SESSION_MODE, "failed_units", []), "no failed systemd units (failed_units: None)"),
+    "an update notifier starts": (
+        *_set_fact(SESSION_MODE, "update_notifiers", ["update-notifier"]),
+        "update notifiers in the live session: 'update-notifier'",
+    ),
+    "update notifiers not reported": (*_set_fact(SESSION_MODE, "update_notifiers", []), "update notifiers in the live session: None"),
+    "GNOME Software checks for updates": (
+        *_set_fact(SESSION_MODE, "gnome_software_updates", ["true"]),
+        "GNOME Software checks for updates: 'true'",
+    ),
+    "GNOME Software's setting unreadable": (
+        *_set_fact(SESSION_MODE, "gnome_software_updates", ["error"]),
+        "GNOME Software checks for updates: 'error'",
+    ),
+    "casper's medium check failed": (
+        *_set_fact(SESSION_MODE, "casper_md5check", ["running", "fail"]),
+        "casper's medium check: 'fail'",
+    ),
+    "casper's medium check service failed": (
+        *_set_fact(SESSION_MODE, "casper_md5check", ["failed"]),
+        "casper's medium check: 'failed'",
+    ),
+    "casper's medium check not reported": (*_set_fact(SESSION_MODE, "casper_md5check", []), "casper's medium check: None"),
 }
 
 
@@ -197,6 +254,9 @@ def test_selinux_must_be_enforcing_on_fedora(tmp_path):
         ("fedora_logo_packages", [], "Fedora logo packages installed: None"),
         ("kde_launcher_icon", ["start-here"], "KDE launcher icon is 'start-here'"),
         ("kde_launcher_icon", ["none"], "KDE launcher icon is 'none'"),
+        ("plasma_welcome_installer", ["missing:liveinst"], "Plasma Welcome offers installer 'missing:liveinst'"),
+        ("plasma_welcome_installer", [], "Plasma Welcome offers installer None"),
+        ("failed_units", ["mcelog.service "], "no failed systemd units (failed_units: 'mcelog.service')"),
     ],
 )
 def test_fedora_and_kde_branding_must_be_the_distros(tmp_path, key, value, expected):

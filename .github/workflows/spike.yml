@@ -52,6 +52,7 @@ jobs:
             linuxlive/data/rootfs/common/usr/libexec/linuxlive/finalize \
             linuxlive/data/rootfs/common/usr/libexec/linuxlive/bootcheck \
             linuxlive/data/rootfs/common/usr/libexec/linuxlive/ini-set \
+            linuxlive/data/rootfs/common/usr/libexec/linuxlive/live-setup \
             linuxlive/data/rootfs/kde/usr/libexec/linuxlive/kde-apply-branding
       - name: Compile examples
         run: |

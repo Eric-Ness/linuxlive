@@ -191,14 +191,25 @@ mcopy -i "$efi_img" "$iso"/EFI/BOOT/* ::/EFI/BOOT/
 
 # 8. GRUB for BIOS: an El Torito core image that finds the ISO by its marker
 #    file, with the module directory alongside for anything else it loads.
+bios_image=boot/grub/i386-pc/eltorito.img
 mkdir -p "$iso/boot/grub/i386-pc"
 cp "$grub_pc"/*.mod "$grub_pc"/*.lst "$iso/boot/grub/i386-pc/"
 "$grub_mkimage" -d "$grub_pc" -O i386-pc-eltorito -p /boot/grub -c "$ctx/iso/bios-embed.cfg" \
-	-o "$iso/boot/grub/i386-pc/eltorito.img" \
+	-o "$iso/$bios_image" \
 	biosdisk iso9660 part_msdos part_gpt search search_fs_file normal configfile linux echo test ls
 
-# 9. The hybrid image: El Torito for optical media, MBR and GPT for USB sticks.
-#    The layout follows Ubuntu's own desktop ISOs.
+# 9. Checksums for Ubuntu's medium check. casper-md5check reads md5sum.txt in
+#    every live session, and its service fails when the file is missing.
+#    xorriso patches a boot info table into the El Torito image as it writes
+#    the ISO, so that file's checksum could never match and is left out.
+if [[ $LL_LIVE_LAYOUT == casper ]]; then
+	log "writing md5sum.txt"
+	(cd "$iso" && find . -type f ! -path ./md5sum.txt ! -path "./$bios_image" -print0 |
+		LC_ALL=C sort -z | xargs -0 md5sum >md5sum.txt)
+fi
+
+# 10. The hybrid image: El Torito for optical media, MBR and GPT for USB sticks.
+#     The layout follows Ubuntu's own desktop ISOs.
 log "writing $out"
 mkdir -p "$(dirname "$out")"
 xorriso -as mkisofs \
@@ -213,7 +224,7 @@ xorriso -as mkisofs \
 	-appended_part_as_gpt \
 	-iso_mbr_part_type a2a0d0ebe5b9334487c068b6b72699c7 \
 	-c /boot.catalog \
-	-b /boot/grub/i386-pc/eltorito.img -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info \
+	-b "/$bios_image" -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info \
 	-eltorito-alt-boot \
 	-e '--interval:appended_partition_2:all::' -no-emul-boot \
 	"$iso"

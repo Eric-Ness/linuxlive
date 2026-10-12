@@ -42,6 +42,9 @@ LAYOUT_FILES = {
     "casper": {"casper/filesystem.squashfs": 500 * MB, "casper/vmlinuz": 5 * MB, "casper/initrd": 10 * MB},
     "liveos": {"LiveOS/squashfs.img": 500 * MB, "live/vmlinuz": 5 * MB, "live/initrd.img": 10 * MB},
 }
+# xorriso writes the boot catalog, and patches a boot info table into the El
+# Torito image, as it writes the ISO, so md5sum.txt cannot cover those two.
+MD5_UNLISTED = {"boot.catalog", "boot/grub/i386-pc/eltorito.img"}
 
 
 @dataclass(frozen=True)
@@ -109,6 +112,18 @@ def check_iso(plan: Plan, results: Path) -> list[Outcome]:
     for name, minimum in {**COMMON_FILES, **LAYOUT_FILES[plan.live_layout]}.items():
         size = files.get(name)
         c.expect(size is not None and size >= minimum, f"{name} is {size} bytes, needs at least {minimum}")
+    if plan.live_layout == "casper":
+        # casper-md5check checks the medium against md5sum.txt in every live session.
+        md5 = iso.get("md5sum")
+        c.expect(isinstance(md5, dict), "md5sum.txt is on the ISO for casper's medium check")
+        if isinstance(md5, dict):
+            c.expect(
+                md5.get("entries", 0) > 0 and not md5.get("mismatched") and not md5.get("missing"),
+                f"md5sum.txt lists {md5.get('entries')} files and matches them "
+                f"(mismatched: {md5.get('mismatched')}, missing: {md5.get('missing')})",
+            )
+            extra = sorted(set(md5.get("unlisted") or []) - MD5_UNLISTED)
+            c.expect(not extra, f"md5sum.txt covers every file but the boot catalog and El Torito image (also unlisted: {extra})")
     return c.outcomes
 
 
@@ -163,6 +178,32 @@ def _check_upstream_branding(c: _Collector, plan: Plan, result: dict) -> None:
         c.expect(icons == LOGO_NAME, f"KDE launcher icon is {icons!r}, expected the distro logo {LOGO_NAME!r}")
 
 
+def _check_live_session(c: _Collector, plan: Plan, result: dict) -> None:
+    """Nothing failed, nothing nags about updates, nothing offers a missing installer."""
+    for key in ("failed_units", "failed_units_after_settle"):
+        units = _fact(result, key)
+        units = units.strip() if units is not None else None
+        c.expect(units in ("none", ""), f"no failed systemd units ({key}: {units!r})")
+    notifiers = _fact(result, "update_notifiers")
+    c.expect(notifiers == "none", f"update notifiers in the live session: {notifiers!r}, expected 'none'")
+    software = _fact(result, "gnome_software_updates")
+    c.expect(
+        software in ("false", "absent"),
+        f"GNOME Software checks for updates: {software!r}, expected 'false' (or 'absent' without GNOME Software)",
+    )
+    if plan.desktop.id == "kde":
+        installer = _fact(result, "plasma_welcome_installer")
+        c.expect(
+            installer is not None and not installer.startswith("missing:"),
+            f"Plasma Welcome offers installer {installer!r}, which must exist or be 'none'",
+        )
+    if plan.base.id == "ubuntu":
+        # The last report wins; "running" means it had not finished when the VM stopped.
+        verdicts = _facts(result, "casper_md5check")
+        verdict = verdicts[-1] if verdicts else None
+        c.expect(verdict in ("pass", "running"), f"casper's medium check: {verdict!r}, expected 'pass' (or still 'running')")
+
+
 def check_session(plan: Plan, results: Path) -> list[Outcome]:
     spec = plan.spec
     c = _Collector("session")
@@ -211,6 +252,7 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
     if plan.base.id == "fedora":
         c.expect(_fact(result, "selinux") == "Enforcing", f"SELinux is {_fact(result, 'selinux')!r}, expected 'Enforcing'")
     _check_upstream_branding(c, plan, result)
+    _check_live_session(c, plan, result)
 
     try:
         hue = wallpaper_hue(spec)

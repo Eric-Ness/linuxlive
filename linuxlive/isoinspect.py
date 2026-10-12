@@ -3,11 +3,14 @@
 Reports what makes an image bootable: the El Torito boot catalog (BIOS and
 EFI entries), the MBR and GPT written for USB boot (including the EFI system
 partition), and whether given files exist, found through the Joliet tree.
+When the ISO carries an md5sum.txt (Ubuntu's medium check reads it), every
+checksum in it is checked against the file's bytes in the image.
 """
 
 from __future__ import annotations
 
 import hashlib
+import re
 import struct
 import uuid
 from pathlib import Path
@@ -15,6 +18,8 @@ from pathlib import Path
 SECTOR = 2048
 ESP_GUID = uuid.UUID("c12a7328-f81f-11d2-ba4b-00a0c93ec93b")
 JOLIET_ESCAPES = (b"%/@", b"%/C", b"%/E")
+MD5SUMS = "md5sum.txt"
+MD5_LINE = re.compile(r"([0-9a-f]{32})\s+(\S.*)")
 
 # Files the verifier may ask about, for either live layout.
 DEFAULT_PATHS = (
@@ -188,6 +193,62 @@ def _lookup(fh, root: bytes, path: str) -> int | None:
     return None
 
 
+def _tree(fh, lba: int, size: int, prefix: str = "", seen: set[int] | None = None) -> dict[str, list[tuple[int, int]]]:
+    """Every file under a Joliet directory: path -> its extents, in order."""
+    seen = set() if seen is None else seen
+    if lba in seen:
+        raise IsoError("directory tree loops back on itself")
+    seen.add(lba)
+    files: dict[str, list[tuple[int, int]]] = {}
+    for rec in _dir_records(fh, lba, size):
+        path = prefix + _joliet_name(rec["name"])
+        if rec["flags"] & 0x02:
+            files.update(_tree(fh, rec["lba"], rec["size"], path + "/", seen))
+        else:
+            files.setdefault(path, []).append((rec["lba"], rec["size"]))
+    return files
+
+
+def _content(fh, extents: list[tuple[int, int]]):
+    for lba, size in extents:
+        fh.seek(lba * SECTOR)
+        left = size
+        while left:
+            block = fh.read(min(left, 1 << 20))
+            if not block:
+                raise IsoError(f"file data at sector {lba} runs past the end of the image")
+            left -= len(block)
+            yield block
+
+
+def _check_md5sums(fh, files: dict[str, list[tuple[int, int]]]) -> dict | None:
+    """md5sum.txt against the image, the way casper-md5check reads it."""
+    if MD5SUMS not in files:
+        return None
+    listed: dict[str, str] = {}
+    text = b"".join(_content(fh, files[MD5SUMS])).decode("utf-8", errors="replace")
+    for line in text.splitlines():
+        m = MD5_LINE.fullmatch(line.strip())
+        if m:
+            listed[m.group(2).removeprefix("./")] = m.group(1)
+    mismatched, missing = [], []
+    for name, want in sorted(listed.items()):
+        if name not in files:
+            missing.append(name)
+            continue
+        digest = hashlib.md5(usedforsecurity=False)
+        for block in _content(fh, files[name]):
+            digest.update(block)
+        if digest.hexdigest() != want:
+            mismatched.append(name)
+    return {
+        "entries": len(listed),
+        "mismatched": mismatched,
+        "missing": missing,
+        "unlisted": sorted(set(files) - set(listed) - {MD5SUMS}),
+    }
+
+
 def inspect_iso(path: Path | str, paths=DEFAULT_PATHS, *, checksum: bool = True) -> dict:
     path = Path(path)
     with open(path, "rb") as fh:
@@ -202,10 +263,13 @@ def inspect_iso(path: Path | str, paths=DEFAULT_PATHS, *, checksum: bool = True)
             "el_torito": _el_torito(fh, descriptors.get("boot_catalog")),
             "joliet": "joliet" in descriptors,
             "files": {},
+            "md5sum": None,
         }
         if "joliet" in descriptors:
             root = descriptors["joliet"][156:190]
             report["files"] = {p: _lookup(fh, root, p) for p in paths}
+            tree = _tree(fh, struct.unpack("<I", root[2:6])[0], struct.unpack("<I", root[10:14])[0])
+            report["md5sum"] = _check_md5sums(fh, tree)
     if checksum:
         digest = hashlib.sha256()
         with open(path, "rb") as fh:

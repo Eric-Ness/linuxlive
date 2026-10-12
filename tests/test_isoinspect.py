@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import struct
 import uuid
 
@@ -25,13 +26,17 @@ def _dir_record(name: bytes, lba: int, size: int, is_dir: bool) -> bytes:
 
 
 def build_iso(path, *, files, bios=True, efi=True, gpt=True, volid="TESTOS_0_1", multi_extent=None):
-    """Write a minimal hybrid ISO: MBR, GPT, PVD, El Torito, Joliet tree."""
+    """Write a minimal hybrid ISO: MBR, GPT, PVD, El Torito, Joliet tree.
+
+    A file is a size (a record pointing at no data) or its bytes. A
+    multi_extent entry splits a file into parts, each a size or bytes.
+    """
     sectors = {}
     next_free = [40]
 
-    def alloc():
-        next_free[0] += 1
-        return next_free[0] - 1
+    def alloc(count=1):
+        next_free[0] += count
+        return next_free[0] - count
 
     # Directory tree from the file paths.
     tree: dict = {}
@@ -54,7 +59,12 @@ def build_iso(path, *, files, bios=True, efi=True, gpt=True, volid="TESTOS_0_1",
                 file_name = joliet + ";1".encode("utf-16-be")
                 parts = multi_extent.get(name, [child]) if multi_extent else [child]
                 for index, part in enumerate(parts):
-                    rec = bytearray(_dir_record(file_name, 0, part, False))
+                    if isinstance(part, bytes):
+                        data_lba = alloc(max(1, -(-len(part) // SECTOR)))
+                        sectors[data_lba] = part
+                        rec = bytearray(_dir_record(file_name, data_lba, len(part), False))
+                    else:
+                        rec = bytearray(_dir_record(file_name, 0, part, False))
                     if index < len(parts) - 1:
                         rec[25] |= 0x80  # more extents follow
                     records.append(bytes(rec))
@@ -65,7 +75,7 @@ def build_iso(path, *, files, bios=True, efi=True, gpt=True, volid="TESTOS_0_1",
     root_lba = alloc()
     write_dir(tree, root_lba, root_lba)
 
-    image = bytearray(80 * SECTOR)
+    image = bytearray(max(80, next_free[0]) * SECTOR)
     image[510:512] = b"\x55\xaa"
     if gpt:
         header = bytearray(92)
@@ -165,6 +175,52 @@ def test_multi_extent_files_add_up(tmp_path):
         multi_extent={"squashfs.img": [4_294_965_248, 1_000_000]},
     )
     assert inspect_iso(iso, paths=["LiveOS/squashfs.img"])["files"]["LiveOS/squashfs.img"] == 4_295_965_248
+
+
+KERNEL = b"kernel " * 1000
+INFO = b"TestOS 0.1\n"
+BOOT_IMAGE = b"\xeb" * 3000
+
+
+def md5sum_txt(entries: dict[str, bytes]) -> bytes:
+    """md5sum.txt as `md5sum` writes it from the ISO's root."""
+    return "".join(f"{hashlib.md5(data).hexdigest()}  ./{name}\n" for name, data in entries.items()).encode()
+
+
+def test_checks_md5sum_txt_against_the_files(tmp_path):
+    files = {".disk/info": INFO, "casper/vmlinuz": KERNEL, "boot/grub/i386-pc/eltorito.img": BOOT_IMAGE}
+    files["md5sum.txt"] = md5sum_txt({".disk/info": INFO, "casper/vmlinuz": KERNEL})
+    report = inspect_iso(build_iso(tmp_path / "x.iso", files=files))
+    assert report["md5sum"] == {"entries": 2, "mismatched": [], "missing": [], "unlisted": ["boot/grub/i386-pc/eltorito.img"]}
+
+
+def test_a_wrong_checksum_is_a_mismatch(tmp_path):
+    files = {".disk/info": INFO, "casper/vmlinuz": KERNEL}
+    files["md5sum.txt"] = md5sum_txt({".disk/info": INFO, "casper/vmlinuz": KERNEL[:-1]})
+    report = inspect_iso(build_iso(tmp_path / "x.iso", files=files))
+    assert report["md5sum"]["mismatched"] == ["casper/vmlinuz"]
+
+
+def test_a_listed_file_that_is_not_there_is_missing(tmp_path):
+    files = {".disk/info": INFO, "md5sum.txt": md5sum_txt({".disk/info": INFO, "casper/initrd": b"x"})}
+    report = inspect_iso(build_iso(tmp_path / "x.iso", files=files))
+    assert report["md5sum"]["missing"] == ["casper/initrd"]
+    assert report["md5sum"]["mismatched"] == []
+
+
+def test_no_md5sum_txt_is_reported_as_none(tmp_path):
+    assert inspect_iso(build_iso(tmp_path / "x.iso", files={".disk/info": INFO}))["md5sum"] is None
+
+
+def test_md5_of_a_multi_extent_file_covers_every_extent(tmp_path):
+    head, tail = b"a" * (3 * SECTOR), b"b" * 100
+    for listed, expected in ((head + tail, []), (head, ["LiveOS/squashfs.img"])):
+        iso = build_iso(
+            tmp_path / f"x{len(expected)}.iso",
+            files={"LiveOS/squashfs.img": 0, "md5sum.txt": md5sum_txt({"LiveOS/squashfs.img": listed})},
+            multi_extent={"squashfs.img": [head, tail]},
+        )
+        assert inspect_iso(iso)["md5sum"]["mismatched"] == expected
 
 
 def test_rejects_files_that_are_not_iso9660(tmp_path):

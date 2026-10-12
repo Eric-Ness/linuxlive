@@ -1,0 +1,39 @@
+#!/bin/sh
+# Adjusts a live session at boot. linuxlive-live.service runs this only when
+# the ISO was booted (casper or dmsquash-live). The live root is a writable
+# overlay that is thrown away at shutdown, so none of it reaches a disk.
+set -eu
+
+log() { printf 'linuxlive-live-setup: %s\n' "$*"; }
+
+# Nothing updated in a live session survives shutdown, so it gets no update
+# notifiers: not Ubuntu's (with its Ubuntu Pro reminder), not KDE Discover's,
+# and GNOME Software neither checks for updates nor downloads them. Fedora's
+# livesys does the same for its own desktops.
+for entry in update-notifier ubuntu-advantage-notification org.kde.discover.notifier; do
+	if [ -e "/etc/xdg/autostart/$entry.desktop" ]; then
+		rm -f "/etc/xdg/autostart/$entry.desktop"
+		log "no $entry in the live session"
+	fi
+done
+schemas=/usr/share/glib-2.0/schemas
+if [ -f "$schemas/org.gnome.software.gschema.xml" ]; then
+	# Desktop-scoped values beat plain ones, so cover the sessions that have them.
+	for scope in "" :ubuntu :X-Cinnamon; do
+		printf '[org.gnome.software%s]\nallow-updates=false\ndownload-updates=false\n\n' "$scope"
+	done >"$schemas/zz_linuxlive_live.gschema.override"
+	glib-compile-schemas "$schemas"
+	log "GNOME Software: no update checks or downloads"
+fi
+
+# Fedora's livesys points Plasma Welcome's live page at Anaconda (liveinst),
+# which these images do not have. With no installer named, the page only
+# welcomes the user.
+for rc in /home/*/.config/plasma-welcomerc; do
+	[ -f "$rc" ] || continue
+	installer=$(sed -n 's/^LiveInstaller=//p' "$rc")
+	if [ -n "$installer" ] && [ ! -e "/usr/share/applications/$installer.desktop" ]; then
+		sed -i '/^LiveInstaller=/d' "$rc"
+		log "Plasma Welcome: no $installer installer to offer"
+	fi
+done

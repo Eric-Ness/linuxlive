@@ -124,6 +124,77 @@ session_errors() {
 		while IFS= read -r line; do fact session_error "$line"; done
 }
 
+failed_units() {
+	units=$(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | tr '\n' ' ')
+	units=${units% }
+	printf '%s' "${units:-none}"
+}
+
+# Update notifiers the user's session starts: autostart entries that exist and
+# that the user's own copy does not hide (Fedora's livesys hides Discover's).
+update_notifiers() {
+	home=$(getent passwd "$1" | cut -d: -f6)
+	found=""
+	for entry in update-notifier ubuntu-advantage-notification org.kde.discover.notifier; do
+		file=/etc/xdg/autostart/$entry.desktop
+		[ -e "$home/.config/autostart/$entry.desktop" ] && file=$home/.config/autostart/$entry.desktop
+		[ -f "$file" ] || continue
+		grep -qx 'Hidden=true' "$file" && continue
+		found="$found $entry"
+	done
+	found=${found# }
+	printf '%s' "${found:-none}"
+}
+
+# Whether GNOME Software checks for updates, as the session sees it: settings
+# can be scoped to a desktop, so read them with the session's XDG_CURRENT_DESKTOP.
+gnome_software_updates() {
+	home=$(getent passwd "$1" | cut -d: -f6)
+	desktop=""
+	if [ -n "$2" ]; then
+		desktop=$(tr '\0' '\n' <"/proc/$2/environ" 2>/dev/null | sed -n 's/^XDG_CURRENT_DESKTOP=//p')
+	fi
+	if ! command -v gsettings >/dev/null 2>&1 ||
+		! runuser -u "$1" -- env HOME="$home" gsettings list-schemas 2>/dev/null | grep -qx org.gnome.software; then
+		printf absent
+		return
+	fi
+	runuser -u "$1" -- env HOME="$home" XDG_CURRENT_DESKTOP="$desktop" \
+		gsettings get org.gnome.software allow-updates 2>/dev/null || printf error
+}
+
+# The installer Plasma Welcome's live page offers, if any, and whether it exists.
+welcome_installer() {
+	rc="$(getent passwd "$1" | cut -d: -f6)/.config/plasma-welcomerc"
+	installer=$(sed -n 's/^LiveInstaller=//p' "$rc" 2>/dev/null)
+	if [ -z "$installer" ]; then
+		printf none
+	elif [ -e "/usr/share/applications/$installer.desktop" ]; then
+		printf '%s' "$installer"
+	else
+		printf 'missing:%s' "$installer"
+	fi
+}
+
+# Ubuntu's medium check runs at idle priority and writes its verdict to
+# /run/casper-md5check.json. Wait for it until shortly before boottest.py
+# stops the VM, then say "running" if it has not finished.
+casper_md5check() {
+	result=""
+	tries=0
+	while [ "$tries" -lt 25 ]; do
+		result=$(sed -n 's/.*"result": "\([a-z]*\)".*/\1/p' /run/casper-md5check.json 2>/dev/null)
+		[ -n "$result" ] && break
+		if [ "$(systemctl show -p ActiveState --value casper-md5check.service 2>/dev/null)" = failed ]; then
+			result=failed
+			break
+		fi
+		tries=$((tries + 1))
+		sleep 2
+	done
+	printf '%s' "${result:-running}"
+}
+
 # Plasma saves the layout a little after the login script changes it, so give
 # it up to two minutes to show the distro logo before reporting what is there.
 kde_launcher_icons() {
@@ -165,7 +236,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		if [ "$shell" = plasmashell ]; then
 			fact kde_launcher_icon "$(kde_launcher_icons "$user")"
 		fi
-		fact failed_units "$(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | tr '\n' ' ')"
+		fact failed_units "$(failed_units)"
 		if [ -d /sys/fs/selinux ]; then
 			fact avc_denials "$(journalctl -k -b --no-pager 2>/dev/null | grep -c 'avc:  denied')"
 			journalctl -k -b --no-pager -o cat 2>/dev/null | grep 'avc:  denied' | head -n 5 |
@@ -176,11 +247,22 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		# fallback-mode dialog). Look again once the session has settled, and
 		# keep the session's own error lines if the shell is gone.
 		sleep 30
-		if pgrep -u "$user" -x "$shell" >/dev/null 2>&1; then
+		pid=$(pgrep -u "$user" -x "$shell" 2>/dev/null | head -n 1)
+		if [ -n "$pid" ]; then
 			fact shell_after_settle "$shell"
 		else
 			fact shell_after_settle none
 			session_errors "$user"
+		fi
+		# Units that failed later, such as ones started after login.
+		fact failed_units_after_settle "$(failed_units)"
+		fact update_notifiers "$(update_notifiers "$user")"
+		fact gnome_software_updates "$(gnome_software_updates "$user" "$pid")"
+		if [ "$shell" = plasmashell ]; then
+			fact plasma_welcome_installer "$(welcome_installer "$user")"
+		fi
+		if systemctl cat casper-md5check.service >/dev/null 2>&1; then
+			fact casper_md5check "$(casper_md5check)"
 		fi
 		exit 0
 	done

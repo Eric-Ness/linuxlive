@@ -1,0 +1,17 @@
+[Unit]
+Description=linuxlive live session setup (only when booted from the ISO)
+Documentation=https://linuxlive.com
+# casper (Ubuntu) and dmsquash-live (Fedora) boot the ISO with these.
+ConditionKernelCommandLine=|boot=casper
+ConditionKernelCommandLine=|rd.live.image
+# On Fedora, livesys sets up the live user first; this adjusts what it wrote.
+After=livesys.service
+Before=display-manager.service systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/linuxlive/live-setup
+
+[Install]
+WantedBy=multi-user.target
