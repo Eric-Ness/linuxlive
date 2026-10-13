@@ -32,6 +32,14 @@ if command -v dpkg-query >/dev/null 2>&1; then
 	if dpkg-query -W -f='${Status}' casper 2>/dev/null | grep -q 'ok installed'; then fact casper_installed yes; else fact casper_installed no; fi
 fi
 fact login_users "$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 {print $1}' | sort | tr '\n' ' ' | sed 's/ $//')"
+# An installed bootc system: the image it updates from.
+if command -v bootc >/dev/null 2>&1; then
+	fact bootc_image "$(bootc status --format json 2>/dev/null | python3 -c 'import json, sys
+try:
+    print(json.load(sys.stdin)["status"]["booted"]["image"]["image"]["image"])
+except Exception:
+    print("none")' 2>/dev/null || printf none)"
+fi
 
 if [ -d /sys/firmware/efi ]; then
 	fact firmware uefi

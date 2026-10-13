@@ -230,3 +230,24 @@ def add_iso_env(ctx: BuildContext, plan: Plan) -> None:
             }
         ),
     )
+
+
+def install_launcher(plan: Plan) -> str:
+    return "\n".join([
+        "[Desktop Entry]",
+        "Type=Application",
+        f"Name=Install {plan.spec.name}",
+        f"Comment=Erase a disk and install {plan.spec.name} on this computer",
+        "Exec=/usr/libexec/linuxlive/installer",
+        f"Icon={LOGO_NAME}",
+        "Terminal=false",
+        "Categories=System;",
+    ]) + "\n"
+
+
+def add_install_launcher(ctx: BuildContext, plan: Plan) -> None:
+    """The installer's launcher: in the menu and on the live user's desktop
+    (the live user is created from /etc/skel)."""
+    launcher = install_launcher(plan)
+    ctx.add_text("rootfs/usr/share/applications/linuxlive-install.desktop", launcher)
+    ctx.add_text("rootfs/etc/skel/Desktop/linuxlive-install.desktop", launcher, mode=0o755)

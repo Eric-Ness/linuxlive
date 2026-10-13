@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from linuxlive.compiler.common import add_grub_configs, header_comment
+from linuxlive.compiler.common import add_grub_configs, add_install_launcher, header_comment
 from linuxlive.compiler.context import BuildContext
-from linuxlive.compiler.plan import LOGO_NAME, Plan
+from linuxlive.compiler.plan import Plan
 
 LIVE_USER = "live"
 # Where the image keeps the bootloader .debs the installer installs (install-to-disk).
@@ -36,24 +36,9 @@ def add_base(ctx: BuildContext, plan: Plan) -> None:
     ctx.add_text("rootfs/usr/share/plymouth/themes/linuxlive-text/linuxlive-text.plymouth", text_splash(plan))
     # The installer's launcher: in the menu and on the live user's desktop
     # (casper creates the live user from /etc/skel).
-    launcher = install_launcher(plan)
-    ctx.add_text("rootfs/usr/share/applications/linuxlive-install.desktop", launcher)
-    ctx.add_text("rootfs/etc/skel/Desktop/linuxlive-install.desktop", launcher, mode=0o755)
+    add_install_launcher(ctx, plan)
     add_grub_configs(ctx, plan, kernel="/casper/vmlinuz", initrd="/casper/initrd", install=True)
     ctx.add_text("Containerfile", containerfile(plan))
-
-
-def install_launcher(plan: Plan) -> str:
-    return "\n".join([
-        "[Desktop Entry]",
-        "Type=Application",
-        f"Name=Install {plan.spec.name}",
-        f"Comment=Erase a disk and install {plan.spec.name} on this computer",
-        "Exec=/usr/libexec/linuxlive/installer",
-        f"Icon={LOGO_NAME}",
-        "Terminal=false",
-        "Categories=System;",
-    ]) + "\n"
 
 
 def text_splash(plan: Plan) -> str:

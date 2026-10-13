@@ -1,0 +1,31 @@
+#!/bin/sh
+# Unattended install for linuxlive's QEMU tests (scripts/boottest.py, mode
+# install). It only runs when QEMU passes -fw_cfg name=opt/linuxlive/autoinstall
+# with "disk=...;user=...;password=...;hostname=...;timezone=...", and on
+# Fedora "image=..." (the run's registry image to install from); on real
+# hardware, and in VMs started any other way, it exits without doing anything.
+# It reports to the first serial port and powers the machine off.
+flag=/sys/firmware/qemu_fw_cfg/by_name/opt/linuxlive/autoinstall/raw
+[ -e "$flag" ] || modprobe qemu_fw_cfg 2>/dev/null
+[ -e "$flag" ] || exit 0
+exec 3>/dev/ttyS0 || exit 0
+say() { printf '%s\n' "$*" >&3; }
+
+value() { tr ';' '\n' <"$flag" | sed -n "s/^$1=//p" | head -n 1; }
+say LINUXLIVE_INSTALL_START
+pw=$(mktemp)
+value password >"$pw"
+image=$(value image)
+# shellcheck disable=SC2046 # $image is one word or none
+if /usr/libexec/linuxlive/install-to-disk --disk "$(value disk)" --confirm "$(value disk)" ${image:+--image "$image"} \
+	--user "$(value user)" --fullname "linuxlive test" --password-file "$pw" \
+	--hostname "$(value hostname)" --timezone "$(value timezone)" --autologin >/tmp/linuxlive-install.log 2>&1; then
+	say LINUXLIVE_INSTALLED
+else
+	say "LINUXLIVE_FACT install_error=$(grep '^ERROR ' /tmp/linuxlive-install.log | tail -n 1 | cut -c7-)"
+	tail -n 20 /tmp/linuxlive-install.log | while IFS= read -r line; do say "LINUXLIVE_FACT install_log=$line"; done
+	say LINUXLIVE_INSTALL_FAILED
+fi
+rm -f "$pw"
+sync
+systemctl poweroff

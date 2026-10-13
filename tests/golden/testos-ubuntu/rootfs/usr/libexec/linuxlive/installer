@@ -20,12 +20,12 @@ BACKEND = "/usr/libexec/linuxlive/install-to-disk"
 def branding():
     values = {}
     try:
-        out = subprocess.run(["bash", "-c", ". /usr/lib/linuxlive/branding.env; printf '%s\\n%s\\n' \"$LL_NAME\" \"$LL_ID\""],
+        out = subprocess.run(["bash", "-c", ". /usr/lib/linuxlive/branding.env; printf '%s\\n%s\\n%s\\n' \"$LL_NAME\" \"$LL_ID\" \"$LL_BASE\""],
                              capture_output=True, text=True, check=True).stdout.split("\n")
-        values = {"name": out[0], "id": out[1]}
+        values = {"name": out[0], "id": out[1], "base": out[2]}
     except (OSError, subprocess.CalledProcessError, IndexError):
         pass
-    return values.get("name") or "linuxlive", values.get("id") or "linuxlive"
+    return values.get("name") or "linuxlive", values.get("id") or "linuxlive", values.get("base") or ""
 
 
 def disks():
@@ -57,7 +57,7 @@ def timezones():
 
 class Installer(Gtk.Window):
     def __init__(self):
-        self.name, self.id = branding()
+        self.name, self.id, self.base = branding()
         super().__init__(title=f"Install {self.name}")
         self.set_default_size(560, 0)
         self.set_border_width(18)
@@ -71,7 +71,9 @@ class Installer(Gtk.Window):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         intro = Gtk.Label(xalign=0, wrap=True)
         intro.set_markup(f"<b>Install {GLib.markup_escape_text(self.name)} on this computer.</b>\n"
-                         "The disk you pick is erased completely: every file and system on it is lost.")
+                         "The disk you pick is erased completely: every file and system on it is lost."
+                         + ("\nThis needs an internet connection: the system (about 3 GB) is downloaded while it installs, "
+                            "and afterwards it keeps itself up to date." if self.base == "fedora" else ""))
         box.pack_start(intro, False, False, 0)
         grid = Gtk.Grid(column_spacing=12, row_spacing=10)
         box.pack_start(grid, False, False, 0)

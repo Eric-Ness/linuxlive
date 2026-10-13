@@ -1,0 +1,14 @@
+[Unit]
+Description=linuxlive first start: create the installed system's user
+Documentation=https://linuxlive.com
+ConditionPathExists=/etc/linuxlive/firstboot.env
+After=local-fs.target systemd-sysusers.service
+Before=display-manager.service systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/linuxlive/firstboot
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -70,9 +70,9 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         facts["failed_units_after_settle"] = ["none"]
         facts["update_notifiers"] = ["none"]
         facts["gnome_software_updates"] = ["false" if base == "ubuntu" else "absent"]
+        facts["installer_icon"] = ["desktop"]
         if base == "ubuntu":
             facts["casper_md5check"] = ["pass"]
-            facts["installer_icon"] = ["desktop"]
         if base == "fedora":  # TestOS on Fedora is KDE
             facts["kde_launcher_icon"] = ["linuxlive-logo"]
             facts["plasma_welcome_installer"] = ["none"]
@@ -86,9 +86,15 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
     }
 
 
+FEDORA_IMAGE = "ghcr.io/eric-ness/linuxlive/testos-fedora:latest"
+
+
 def make_results(root: Path, base: str = "ubuntu") -> Path:
     root.mkdir(parents=True, exist_ok=True)
-    (root / "meta.json").write_text(json.dumps({"commit": COMMIT, "base": base, "spec": f"examples/testos-{base}.yaml"}))
+    meta = {"commit": COMMIT, "base": base, "spec": f"examples/testos-{base}.yaml"}
+    if base == "fedora":
+        meta["image"] = FEDORA_IMAGE
+    (root / "meta.json").write_text(json.dumps(meta))
     (root / "iso.json").write_text(json.dumps(iso_report("casper" if base == "ubuntu" else "liveos")))
     for mode in BOOT_MODES:
         mode_dir = root / "modes" / mode
@@ -98,21 +104,23 @@ def make_results(root: Path, base: str = "ubuntu") -> Path:
         if session:
             # A screenshot filled with the wallpaper colour.
             solid_png(mode_dir / "screenshot-1.png", 160, 100, PINK)
+    # The installer: an unattended install, then the installed disk alone.
+    live = boot_result(SESSION_MODE, base, session=True)
+    installed = boot_result("uefi-sb-cd", base, session=True)
+    installed["mode"] = "installed-uefi-sb"
+    installed["facts"].update(boot_medium=["disk"], login_users=["tester"], session_user=["tester"],
+                              flatpak=live["facts"]["flatpak"], first_login_wizard=["none"])
     if base == "ubuntu":
-        # The installer: an unattended install, then the installed disk alone.
-        live = boot_result(SESSION_MODE, base, session=True)
-        installed = boot_result("uefi-sb-cd", base, session=True)
-        installed["mode"] = "installed-uefi-sb"
-        installed["facts"].update(boot_medium=["disk"], root_fstype=["ext4"], casper_installed=["no"],
-                                  login_users=["tester"], session_user=["tester"], flatpak=live["facts"]["flatpak"],
-                                  first_login_wizard=["none"])
-        bios = boot_result("bios-usb", base, session=False)
-        bios["mode"] = "installed-bios"
-        bios["facts"].update(boot_medium=["disk"])
-        for name, data in [("install", {"mode": "install", "outcome": "installed", "facts": {}, "markers": ["LINUXLIVE_INSTALLED"]}),
-                           ("installed-uefi-sb", installed), ("installed-bios", bios)]:
-            (root / "modes" / name).mkdir(parents=True)
-            (root / "modes" / name / "result.json").write_text(json.dumps(data))
+        installed["facts"].update(root_fstype=["ext4"], casper_installed=["no"])
+    else:
+        installed["facts"].update(root_fstype=["xfs"], bootc_image=[FEDORA_IMAGE])
+    bios = boot_result("bios-usb", base, session=False)
+    bios["mode"] = "installed-bios"
+    bios["facts"].update(boot_medium=["disk"])
+    for name, data in [("install", {"mode": "install", "outcome": "installed", "facts": {}, "markers": ["LINUXLIVE_INSTALLED"]}),
+                       ("installed-uefi-sb", installed), ("installed-bios", bios)]:
+        (root / "modes" / name).mkdir(parents=True)
+        (root / "modes" / name / "result.json").write_text(json.dumps(data))
     return root
 
 
@@ -328,3 +336,26 @@ def test_missing_results_fail_rather_than_pass(tmp_path):
 def test_unknown_check_names_are_rejected(tmp_path):
     with pytest.raises(ValueError, match="unknown checks: bogus"):
         verify_results(load(), make_results(tmp_path / "r"), ["iso", "bogus"])
+
+
+def test_fedora_install_is_checked_against_the_published_image(tmp_path):
+    results = make_results(tmp_path / "r", "fedora")
+    assert failures(verify_results(load("fedora"), results, ["install"], expect_commit=COMMIT)) == []
+    edit_json(results / "modes/installed-uefi-sb/result.json", lambda d: d["facts"].update(bootc_image=["ghcr.io/someone/else:latest"]))
+    found = failures(verify_results(load("fedora"), results, ["install"], expect_commit=COMMIT))
+    assert any("a bootc system updating from 'ghcr.io/eric-ness/linuxlive/testos-fedora:latest'" in f for f in found)
+
+
+def test_fedora_build_without_a_published_image_has_no_install_to_check(tmp_path):
+    results = make_results(tmp_path / "r", "fedora")
+    edit_json(results / "meta.json", lambda d: d.pop("image"))
+    for mode in ("install", "installed-uefi-sb", "installed-bios"):
+        edit_json(results / f"modes/{mode}/result.json", lambda d: d.update(outcome="timeout"))
+    outcomes = verify_results(load("fedora"), results, ["install"], expect_commit=COMMIT)
+    assert [o for o in outcomes if o.check == "install"] == []
+
+
+def test_fedora_live_desktop_needs_the_installer(tmp_path):
+    results = make_results(tmp_path / "r", "fedora")
+    edit_json(results / f"modes/{SESSION_MODE}/result.json", lambda d: d["facts"].update(installer_icon=["menu-only"]))
+    assert any("the live desktop shows the installer" in f for f in failures(verify_results(load("fedora"), results, ["session"], expect_commit=COMMIT)))

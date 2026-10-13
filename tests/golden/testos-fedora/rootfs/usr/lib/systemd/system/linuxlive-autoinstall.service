@@ -1,0 +1,15 @@
+[Unit]
+Description=linuxlive unattended install (QEMU test runs only)
+Documentation=https://linuxlive.com
+ConditionVirtualization=vm
+# Only in the live session (Ubuntu casper or Fedora dmsquash-live).
+ConditionKernelCommandLine=|boot=casper
+ConditionKernelCommandLine=|rd.live.image
+After=local-fs.target systemd-udev-settle.service
+
+[Service]
+Type=exec
+ExecStart=/usr/libexec/linuxlive/autoinstall
+
+[Install]
+WantedBy=multi-user.target

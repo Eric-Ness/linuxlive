@@ -2,7 +2,9 @@
 Description=linuxlive unattended install (QEMU test runs only)
 Documentation=https://linuxlive.com
 ConditionVirtualization=vm
-ConditionKernelCommandLine=boot=casper
+# Only in the live session (Ubuntu casper or Fedora dmsquash-live).
+ConditionKernelCommandLine=|boot=casper
+ConditionKernelCommandLine=|rd.live.image
 After=local-fs.target systemd-udev-settle.service
 
 [Service]

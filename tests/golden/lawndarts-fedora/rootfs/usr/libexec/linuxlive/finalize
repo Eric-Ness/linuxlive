@@ -169,12 +169,12 @@ brand_kde() {
 
 enable_services() {
 	systemctl enable linuxlive-bootcheck.service linuxlive-live.service
-	if [ "$LL_BASE" = ubuntu ]; then
-		# Inert unless QEMU passes opt/linuxlive/autoinstall (the installer test).
-		systemctl enable linuxlive-autoinstall.service
-	fi
+	# Inert unless QEMU passes opt/linuxlive/autoinstall (the installer test).
+	systemctl enable linuxlive-autoinstall.service
 	if [ "$LL_BASE" = fedora ]; then
 		systemctl enable livesys.service livesys-late.service
+		# Creates the installed system's user at its first start (install-to-disk).
+		systemctl enable linuxlive-firstboot.service
 	fi
 }
 
