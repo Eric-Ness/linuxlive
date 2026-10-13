@@ -200,10 +200,20 @@ Cinnamon on both:
   `source=version`, Fedora's source RPM), so the matching source can be found
   in Ubuntu's and Fedora's archives. The boot check also watches the desktop
   shell until the test ends, and the verifier fails if it crashes late.
+- Since v0.2.0 every Ubuntu-based ISO can install itself: an "Install
+  <distro>" icon on the live desktop and an "Install" boot-menu entry open a
+  small installer that erases one whole disk (after you type erase) and
+  installs the system with your user, booting under UEFI with Secure Boot
+  and under BIOS. CI installs both Ubuntu examples unattended in QEMU and
+  boots the installed disks to the desktop under UEFI with Secure Boot and
+  under BIOS, checking that casper and the live user are gone, the user and
+  the apps are there, and no upstream first-login wizard opens.
 
 What it did not prove, or found broken:
 
-- There is no installer yet; every ISO is live only.
+- The installer only erases a whole disk: no dual boot, no encryption, and
+  Fedora-based ISOs have no installer yet (they would need `bootc install`).
+  It has been tested in QEMU, not yet on real hardware.
 - Three of the seven green Fedora KDE runs up to 2026-10-11 logged one
   SELinux denial: systemd reading a uevent socket that was opened before the
   policy loaded. It looks like a harmless early-boot race but has not been
