@@ -234,22 +234,23 @@ mkdir -p "$target/tmp/linuxlive-debs"
 cp "$DEBS"/*.deb "$target/tmp/linuxlive-debs/"
 in_target sh -c 'DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/linuxlive-debs/*.deb' >/dev/null || die "installing the bootloader packages failed"
 rm -rf "$target/tmp/linuxlive-debs" "$target$DEBS"
-# --force-extra-removable also puts shim at EFI/BOOT/BOOTX64.EFI, which every
-# UEFI firmware starts even when it never recorded the boot entry. Output goes
-# to the log, so a failure says why.
+# Twice: as EFI/ubuntu with a firmware boot entry, and with --removable as
+# EFI/BOOT/BOOTX64.EFI, which every UEFI firmware starts even without an entry
+# (Ubuntu's grub-install has no --force-extra-removable to do both at once).
+# Output goes to the log, so a failure says why.
 efi_grub() {
-	in_target grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu \
-		--uefi-secure-boot --force-extra-removable "$@"
+	in_target grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --uefi-secure-boot "$@"
 }
 if [ -d /sys/firmware/efi ]; then
 	# Some firmware refuses new boot entries; the fallback path still boots.
-	if ! efi_grub; then
-		printf 'NOTE writing the firmware boot entry failed; trying without it (the disk boots through EFI/BOOT)\n'
+	efi_grub || {
+		printf 'NOTE writing the firmware boot entry failed; the disk boots through EFI/BOOT\n'
 		efi_grub --no-nvram || die "installing GRUB for UEFI failed"
-	fi
+	}
 else
 	efi_grub --no-nvram || die "installing GRUB for UEFI failed"
 fi
+efi_grub --removable || die "installing GRUB at EFI/BOOT failed"
 in_target grub-install --target=i386-pc "$disk" || die "installing GRUB for BIOS failed"
 
 progress 88 "Preparing the first start"
