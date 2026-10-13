@@ -142,7 +142,11 @@ trap cleanup EXIT
 progress 4 "Erasing $disk and downloading $LL_NAME (about 3 GB)"
 # The download is most of the work; move the bar along while it runs.
 log=$(mktemp)
-bootc install to-disk --wipe --filesystem xfs --skip-fetch-check \
+# bootc re-runs itself as SELinux's install_t, which a live session (and a
+# systemd service in it) may not enter; with this it sets the live session
+# permissive while it installs instead. The installed system is still labelled
+# from the image's policy and runs enforcing.
+BOOTC_SETENFORCE0_FALLBACK=1 bootc install to-disk --wipe --filesystem xfs --skip-fetch-check \
 	--source-imgref "docker://$source" --target-imgref "$LL_IMAGE_REF" "$disk" >"$log" 2>&1 &
 job=$!
 pct=4
