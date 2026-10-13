@@ -28,6 +28,10 @@ class Base:
     efi_packages: tuple[str, ...]
     # Upstream package -> its neutral replacement, swapped when the image has it.
     replaced_packages: tuple[tuple[str, str], ...] = ()
+    # The installer (Ubuntu only so far): its tools in the image, and the
+    # bootloader packages it installs onto the target disk.
+    installer_packages: tuple[str, ...] = ()
+    bootloader_packages: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -104,6 +108,8 @@ def parse_catalog(raw: dict) -> Catalog:
             blocked_packages=_strings(b.get("blocked_packages"), f"{where}.blocked_packages"),
             efi_packages=_strings(b.get("efi_packages"), f"{where}.efi_packages"),
             replaced_packages=_pairs(b.get("replaced_packages"), f"{where}.replaced_packages"),
+            installer_packages=_strings(b.get("installer_packages"), f"{where}.installer_packages"),
+            bootloader_packages=_strings(b.get("bootloader_packages"), f"{where}.bootloader_packages"),
         )
     desktops = {}
     for key, d in (raw.get("desktops") or {}).items():

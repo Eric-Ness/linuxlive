@@ -23,7 +23,7 @@ from linuxlive.compiler.plan import LOGO_NAME, Plan, plan_build
 from linuxlive.png import ImageError, dominant_hue, hue_fraction, image_info, read_png
 from linuxlive.spec import Spec
 
-CHECKS = ("iso", "boot", "session")
+CHECKS = ("iso", "boot", "session", "install")
 BOOT_MODES = ("bios-cd", "uefi-cd", "uefi-sb-cd", "bios-usb", "uefi-usb")
 SECURE_BOOT_MODE = "uefi-sb-cd"
 SESSION_MODE = "uefi-usb"
@@ -223,6 +223,8 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
     )
     shell = plan.desktop.shell_process
     c.expect(_fact(result, "shell") == shell, f"desktop shell is {_fact(result, 'shell')!r}, expected {shell!r}")
+    if plan.base.id == "ubuntu":
+        c.expect(_fact(result, "installer_icon") == "desktop", f"the live desktop shows the installer (installer_icon {_fact(result, 'installer_icon')!r})")
     after = _fact(result, "shell_after_settle")
     errors = _facts(result, "session_error")
     c.expect(
@@ -287,6 +289,51 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
     return c.outcomes
 
 
+INSTALL_MODES = ("install", "installed-uefi-sb", "installed-bios")
+TEST_USER = "tester"  # what scripts/boottest.py's unattended install creates
+
+
+def check_install(plan: Plan, results: Path) -> list[Outcome]:
+    """The installer (Ubuntu bases): the unattended install onto a blank disk,
+    then that disk booted alone under UEFI with Secure Boot and under BIOS."""
+    c = _Collector("install")
+    if plan.base.id != "ubuntu":
+        return c.outcomes
+    modes = results / "modes"
+    install = _load(modes / "install" / "result.json")
+    if install is None:
+        c.expect(False, "install: result.json is missing or not valid JSON")
+        return c.outcomes
+    error = _fact(install, "install_error")
+    if not c.expect(install.get("outcome") == "installed",
+                    f"install: the unattended install finished (outcome {install.get('outcome')!r})" + (f"; installer: {error}" if error else "")):
+        return c.outcomes
+    live = _load(modes / SESSION_MODE / "result.json") or {}
+    uefi = _load(modes / "installed-uefi-sb" / "result.json")
+    if uefi is None:
+        c.expect(False, "installed-uefi-sb: result.json is missing or not valid JSON")
+    else:
+        c.expect(uefi.get("outcome") == "session", f"installed-uefi-sb: the installed disk boots to the desktop (outcome {uefi.get('outcome')!r})")
+        c.expect(_fact(uefi, "boot_medium") == "disk", f"installed-uefi-sb: started from the disk, not the ISO (boot_medium {_fact(uefi, 'boot_medium')!r})")
+        c.expect(_fact(uefi, "secureboot") == "1", f"installed-uefi-sb: Secure Boot on (guest reports {_fact(uefi, 'secureboot')!r})")
+        c.expect(_fact(uefi, "root_fstype") == "ext4", f"installed-uefi-sb: root file system is {_fact(uefi, 'root_fstype')!r}, expected 'ext4'")
+        c.expect(_fact(uefi, "casper_installed") == "no", f"installed-uefi-sb: casper removed (casper_installed {_fact(uefi, 'casper_installed')!r})")
+        c.expect(_fact(uefi, "login_users") == TEST_USER, f"installed-uefi-sb: the only login user is {TEST_USER!r} (found {_fact(uefi, 'login_users')!r})")
+        c.expect(_fact(uefi, "session_user") == TEST_USER, f"installed-uefi-sb: logged in as {TEST_USER!r} (session user {_fact(uefi, 'session_user')!r})")
+        c.expect(_fact(uefi, "os_name") == plan.spec.name, f"installed-uefi-sb: os-release NAME is {_fact(uefi, 'os_name')!r}")
+        c.expect(_fact(uefi, "first_login_wizard") == "none", f"installed-uefi-sb: no first-login welcome wizard opens (running: {_fact(uefi, 'first_login_wizard')!r})")
+        apps = sorted(_facts(live, "flatpak"))
+        c.expect(sorted(_facts(uefi, "flatpak")) == apps, f"installed-uefi-sb: the live session's apps are installed ({sorted(_facts(uefi, 'flatpak'))} vs {apps})")
+    bios = _load(modes / "installed-bios" / "result.json")
+    if bios is None:
+        c.expect(False, "installed-bios: result.json is missing or not valid JSON")
+    else:
+        c.expect(bios.get("outcome") in ("booted", "session"), f"installed-bios: the installed disk boots under BIOS (outcome {bios.get('outcome')!r})")
+        c.expect(_fact(bios, "firmware") == "bios" and _fact(bios, "boot_medium") == "disk",
+                 f"installed-bios: BIOS firmware, started from the disk (firmware {_fact(bios, 'firmware')!r}, boot_medium {_fact(bios, 'boot_medium')!r})")
+    return c.outcomes
+
+
 def verify_results(
     spec: Spec,
     results: Path,
@@ -307,4 +354,6 @@ def verify_results(
         outcomes += check_boot(spec, results)
     if "session" in checks:
         outcomes += check_session(plan, results)
+    if "install" in checks:
+        outcomes += check_install(plan, results)
     return outcomes

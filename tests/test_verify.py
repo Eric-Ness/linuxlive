@@ -72,6 +72,7 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         facts["gnome_software_updates"] = ["false" if base == "ubuntu" else "absent"]
         if base == "ubuntu":
             facts["casper_md5check"] = ["pass"]
+            facts["installer_icon"] = ["desktop"]
         if base == "fedora":  # TestOS on Fedora is KDE
             facts["kde_launcher_icon"] = ["linuxlive-logo"]
             facts["plasma_welcome_installer"] = ["none"]
@@ -97,6 +98,21 @@ def make_results(root: Path, base: str = "ubuntu") -> Path:
         if session:
             # A screenshot filled with the wallpaper colour.
             solid_png(mode_dir / "screenshot-1.png", 160, 100, PINK)
+    if base == "ubuntu":
+        # The installer: an unattended install, then the installed disk alone.
+        live = boot_result(SESSION_MODE, base, session=True)
+        installed = boot_result("uefi-sb-cd", base, session=True)
+        installed["mode"] = "installed-uefi-sb"
+        installed["facts"].update(boot_medium=["disk"], root_fstype=["ext4"], casper_installed=["no"],
+                                  login_users=["tester"], session_user=["tester"], flatpak=live["facts"]["flatpak"],
+                                  first_login_wizard=["none"])
+        bios = boot_result("bios-usb", base, session=False)
+        bios["mode"] = "installed-bios"
+        bios["facts"].update(boot_medium=["disk"])
+        for name, data in [("install", {"mode": "install", "outcome": "installed", "facts": {}, "markers": ["LINUXLIVE_INSTALLED"]}),
+                           ("installed-uefi-sb", installed), ("installed-bios", bios)]:
+            (root / "modes" / name).mkdir(parents=True)
+            (root / "modes" / name / "result.json").write_text(json.dumps(data))
     return root
 
 
@@ -134,6 +150,21 @@ def _set_fact(mode, key, value):
 
 
 BREAKS = {
+    "the unattended install failed": (
+        "modes/install/result.json",
+        lambda d: d.update(outcome="install-failed", facts={"install_error": ["installing GRUB for BIOS failed"]}),
+        "the unattended install finished (outcome 'install-failed'); installer: installing GRUB for BIOS failed",
+    ),
+    "installed system kept casper": (*_set_fact("installed-uefi-sb", "casper_installed", ["yes"]), "casper removed (casper_installed 'yes')"),
+    "installed disk started the ISO instead": (*_set_fact("installed-uefi-sb", "boot_medium", ["live"]), "started from the disk, not the ISO (boot_medium 'live')"),
+    "installed disk without Secure Boot": (*_set_fact("installed-uefi-sb", "secureboot", ["0"]), "installed-uefi-sb: Secure Boot on (guest reports '0')"),
+    "installed apps missing": (*_set_fact("installed-uefi-sb", "flatpak", []), "the live session's apps are installed"),
+    "Ubuntu's welcome wizard opens on the installed desktop": (
+        *_set_fact("installed-uefi-sb", "first_login_wizard", ["gnome-initial-setup"]),
+        "no first-login welcome wizard opens (running: 'gnome-initial-setup')",
+    ),
+    "installed disk fails under BIOS": ("modes/installed-bios/result.json", lambda d: d.update(outcome="timeout"), "the installed disk boots under BIOS (outcome 'timeout')"),
+    "no installer on the live desktop": (*_set_fact(SESSION_MODE, "installer_icon", ["menu-only"]), "the live desktop shows the installer (installer_icon 'menu-only')"),
     "results from another commit": ("meta.json", lambda d: d.update(commit="f" * 40), "results come from commit"),
     "results for another base": ("meta.json", lambda d: d.update(base="fedora"), "results are for base"),
     "wrong volume id": ("iso.json", lambda d: d.update(volume_id="OTHER"), "volume ID is 'OTHER'"),
@@ -290,7 +321,8 @@ def test_missing_results_fail_rather_than_pass(tmp_path):
     found = failures(verify_results(load(), empty, expect_commit=COMMIT))
     assert any("meta.json is missing" in f for f in found)
     assert any("iso.json is missing" in f for f in found)
-    assert sum("result.json is missing" in f for f in found) == len(BOOT_MODES) + 1
+    # Every boot mode, the session, and the install.
+    assert sum("result.json is missing" in f for f in found) == len(BOOT_MODES) + 2
 
 
 def test_unknown_check_names_are_rejected(tmp_path):

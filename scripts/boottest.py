@@ -38,7 +38,16 @@ MODES = {
     "uefi-sb-cd": ("uefi-sb", "cd"),
     "bios-usb": ("bios", "usb"),
     "uefi-usb": ("uefi", "usb"),
+    # The installer (Ubuntu): boot the ISO from USB with a blank disk attached
+    # and install onto it unattended, then boot that disk alone.
+    "install": ("uefi-sb", "usb+disk"),
+    "installed-uefi-sb": ("uefi-sb", "disk"),
+    "installed-bios": ("bios", "disk"),
 }
+# What the unattended install (autoinstall, in the image) is told: the blank
+# disk is the VM's first virtio disk. Separated by ";" because QEMU's -fw_cfg
+# string may not contain commas.
+AUTOINSTALL = "disk=/dev/vda;user=tester;password=linuxlive-test;hostname=linuxlive-test;timezone=UTC"
 OVMF = {
     "uefi": (
         ["/usr/share/OVMF/OVMF_CODE_4M.fd", "/usr/share/OVMF/OVMF_CODE.fd", "/usr/share/edk2/ovmf/OVMF_CODE.fd"],
@@ -63,7 +72,7 @@ def kvm_usable() -> bool:
     return os.path.exists("/dev/kvm") and os.access("/dev/kvm", os.R_OK | os.W_OK)
 
 
-def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, memory: int, cpus: int, kvm: bool) -> list[str]:
+def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, memory: int, cpus: int, kvm: bool, disk: Path | None = None) -> list[str]:
     firmware, media = MODES[mode]
     machine = "q35,smm=on" if firmware == "uefi-sb" else "q35"
     cmd = [
@@ -91,6 +100,18 @@ def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, m
             "-drive", f"if=pflash,format=raw,unit=0,readonly=on,file={code}",
             "-drive", f"if=pflash,format=raw,unit=1,file={vars_copy}",
         ]
+    if "disk" in media:
+        if disk is None:
+            raise SystemExit(f"--mode {mode} needs --disk")
+        # The ISO (when attached) boots first; the installed disk boots alone.
+        cmd += [
+            "-drive", f"if=none,id=hd,format=qcow2,file={disk}",
+            "-device", f"virtio-blk-pci,drive=hd,bootindex={1 if media == 'usb+disk' else 0}",
+        ]
+    if mode == "install":
+        cmd += ["-fw_cfg", f"name=opt/linuxlive/autoinstall,string={AUTOINSTALL}"]
+    if media == "disk":
+        return cmd
     if media == "cd":
         cmd += [
             "-drive", f"if=none,id=boot,media=cdrom,readonly=on,file={iso}",
@@ -208,7 +229,8 @@ def run(args) -> int:
     boot_timeout = args.boot_timeout * scale
     session_timeout = args.session_timeout * scale
     settle = args.settle * scale
-    cmd = qemu_command(Path(args.iso).resolve(), args.mode, workdir, serial, qmp_path, args.memory, args.cpus, kvm)
+    cmd = qemu_command(Path(args.iso).resolve(), args.mode, workdir, serial, qmp_path, args.memory, args.cpus, kvm,
+                       Path(args.disk).resolve() if args.disk else None)
     print(f"[boottest] {args.mode}: {'KVM' if kvm else 'TCG (no KVM)'}; boot timeout {boot_timeout}s", flush=True)
     print("[boottest] " + " ".join(cmd), flush=True)
 
@@ -228,6 +250,9 @@ def run(args) -> int:
         proc = subprocess.Popen(cmd, stdout=qemu_log, stderr=subprocess.STDOUT)
     qmp = None
     wanted = "LINUXLIVE_SESSION_READY" if args.session else "LINUXLIVE_BOOTED"
+    if args.mode == "install":
+        wanted = "LINUXLIVE_INSTALLED"
+    install_deadline = False
     try:
         try:
             qmp = Qmp(qmp_path)
@@ -243,9 +268,16 @@ def run(args) -> int:
                 result["timings"].setdefault(marker, round(now - started, 1))
             if "LINUXLIVE_BOOTCHECK_START" in log.markers and deadline == started + boot_timeout:
                 deadline = now + session_timeout if args.session else now + 300
-            if wanted in log.markers or "LINUXLIVE_SESSION_TIMEOUT" in log.markers:
+            if "LINUXLIVE_INSTALL_START" in log.markers and not install_deadline:
+                deadline = now + args.install_timeout * scale
+                install_deadline = True
+            if wanted in log.markers or "LINUXLIVE_SESSION_TIMEOUT" in log.markers or "LINUXLIVE_INSTALL_FAILED" in log.markers:
                 break
             if proc.poll() is not None:
+                # The install powers the VM off right after its last line: read it first.
+                log.poll()
+                if wanted in log.markers or "LINUXLIVE_INSTALL_FAILED" in log.markers:
+                    break
                 result["outcome"] = "qemu-exited"
                 break
             if now > deadline:
@@ -254,7 +286,12 @@ def run(args) -> int:
 
         if "LINUXLIVE_BOOTED" in log.markers:
             result["outcome"] = "booted"
-        if args.session and "LINUXLIVE_SESSION_READY" in log.markers:
+        if args.mode == "install":
+            if "LINUXLIVE_INSTALLED" in log.markers:
+                result["outcome"] = "installed"
+            elif "LINUXLIVE_INSTALL_FAILED" in log.markers:
+                result["outcome"] = "install-failed"
+        elif args.session and "LINUXLIVE_SESSION_READY" in log.markers:
             result["outcome"] = "session"
             print(f"[boottest] session ready; waiting {settle}s for the desktop to settle", flush=True)
             time.sleep(settle)
@@ -292,7 +329,10 @@ def run(args) -> int:
     for key in ("os_pretty_name", "firmware", "secureboot", "shell", "plymouth_theme", "selinux", "flatpak"):
         if key in log.facts:
             print(f"[boottest]   {key} = {', '.join(log.facts[key])}", flush=True)
-    reached = result["outcome"] == "session" if args.session else result["outcome"] in ("booted", "session")
+    if args.mode == "install":
+        reached = result["outcome"] == "installed"
+    else:
+        reached = result["outcome"] == "session" if args.session else result["outcome"] in ("booted", "session")
     return 0 if reached else 1
 
 
@@ -311,6 +351,8 @@ def main() -> int:
     parser.add_argument("--screenshots", type=int, default=3)
     parser.add_argument("--screenshot-interval", type=int, default=30)
     parser.add_argument("--tcg-factor", type=int, default=5, help="multiply timeouts by this without KVM")
+    parser.add_argument("--disk", help="qcow2 disk for the install and installed-* modes")
+    parser.add_argument("--install-timeout", type=int, default=1800, help="seconds from the install's start to its end (KVM)")
     return run(parser.parse_args())
 
 

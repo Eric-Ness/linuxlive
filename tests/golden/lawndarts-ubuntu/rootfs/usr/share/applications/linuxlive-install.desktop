@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install Lawn Darts Linux
+Comment=Erase a disk and install Lawn Darts Linux on this computer
+Exec=/usr/libexec/linuxlive/installer
+Icon=linuxlive-logo
+Terminal=false
+Categories=System;

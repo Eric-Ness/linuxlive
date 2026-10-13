@@ -166,10 +166,20 @@ def _override_text(plan: Plan, sections: dict[str, dict[str, str]], scopes: list
     return "\n".join(out)
 
 
-def add_grub_configs(ctx: BuildContext, plan: Plan, kernel: str, initrd: str) -> None:
-    """GRUB menu plus the two small configs that find it on BIOS and UEFI."""
+def add_grub_configs(ctx: BuildContext, plan: Plan, kernel: str, initrd: str, install: bool = False) -> None:
+    """GRUB menu plus the two small configs that find it on BIOS and UEFI.
+
+    With install, the menu also offers to start the live session straight into
+    the installer (kernel parameter linuxlive.install, read by install-on-boot).
+    """
     title = f"{plan.spec.name} {plan.spec.version}"
     args = plan.kernel_args
+    install_entry = f"""
+menuentry 'Install {title}' --id install {{
+	linux {kernel} linuxlive.install {args}
+	initrd {initrd}
+}}
+""" if install else ""
     menu = header_comment(plan) + f"""
 set default=0
 set timeout=5
@@ -179,7 +189,7 @@ menuentry 'Try {title}' --id try {{
 	linux {kernel} {args}
 	initrd {initrd}
 }}
-
+{install_entry}
 menuentry 'Try {title} (safe graphics)' --id safe {{
 	linux {kernel} nomodeset {args}
 	initrd {initrd}

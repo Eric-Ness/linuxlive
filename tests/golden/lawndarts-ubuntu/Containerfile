@@ -52,6 +52,18 @@ RUN set -eux; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
+# The installer's tools, and the bootloader it installs onto the target disk,
+# kept as .debs resolved against this image so the install works offline.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y gdisk dosfstools squashfs-tools python3-gi gir1.2-gtk-3.0; \
+    mkdir -p /usr/lib/linuxlive/installer/debs/partial; \
+    apt-get install -y --download-only -o Dir::Cache::archives=/usr/lib/linuxlive/installer/debs grub-efi-amd64 grub-efi-amd64-signed shim-signed grub-pc-bin efibootmgr mokutil; \
+    rm -rf /usr/lib/linuxlive/installer/debs/partial /usr/lib/linuxlive/installer/debs/lock; \
+    ls /usr/lib/linuxlive/installer/debs/grub-efi-amd64-signed_*.deb /usr/lib/linuxlive/installer/debs/shim-signed_*.deb; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
+
 # Branding and linuxlive's boot check.
 COPY --from=efi /out/ /usr/lib/linuxlive/efi/
 COPY rootfs/ /

@@ -173,6 +173,22 @@ jobs:
             echo "::error::The first boot never reached userspace; skipped the other boot modes"
           fi
 
+      - name: Install test (Ubuntu)
+        run: |
+          # The installer exists on Ubuntu bases only (casper layout) for now.
+          grep -q '^LL_LIVE_LAYOUT=casper' build/ctx/iso.env || exit 0
+          if ! grep -q LINUXLIVE_SESSION_READY "$RESULTS/modes/uefi-usb/serial.log" 2>/dev/null; then
+            echo "::error::The live session never came up; skipped the install test"
+            exit 0
+          fi
+          qemu-img create -f qcow2 build/disk.qcow2 20G
+          python linuxlive/scripts/boottest.py --iso "$ISO" --mode install --disk build/disk.qcow2 --out "$RESULTS/modes/install" || true
+          if grep -q LINUXLIVE_INSTALLED "$RESULTS/modes/install/serial.log" 2>/dev/null; then
+            python linuxlive/scripts/boottest.py --iso "$ISO" --mode installed-uefi-sb --disk build/disk.qcow2 --session --out "$RESULTS/modes/installed-uefi-sb" || true
+            python linuxlive/scripts/boottest.py --iso "$ISO" --mode installed-bios --disk build/disk.qcow2 --out "$RESULTS/modes/installed-bios" || true
+          fi
+          rm -f build/disk.qcow2
+
       - name: Verify
         run: python -m linuxlive verify-results --spec "$SPEC" --results "$RESULTS" --expect-commit "$GITHUB_SHA" | tee build/verify.txt
 
