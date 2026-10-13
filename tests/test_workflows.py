@@ -42,7 +42,17 @@ def test_spike_publishes_every_example_only_after_all_builds_pass():
     spike = load_workflow("spike.yml")
     publish = spike["jobs"]["publish"]
     assert publish["needs"] == "build"
-    assert publish["if"] == "inputs.publish == true"
+    assert publish["if"] == "inputs.publish == true || github.event_name == 'schedule'"
     assert publish["strategy"]["matrix"]["example"] == spike["jobs"]["build"]["strategy"]["matrix"]["example"]
     # Publishing needs the ISO artifacts.
     assert "inputs.publish == true" in spike["jobs"]["build"]["with"]["keep-iso"]
+    assert "github.event_name == 'schedule'" in spike["jobs"]["build"]["with"]["keep-iso"]
+
+
+def test_spike_rebuilds_and_publishes_the_examples_monthly():
+    spike = load_workflow("spike.yml")
+    crons = [c["cron"] for c in spike["on"].get("schedule", [])]
+    assert len(crons) == 1 and crons[0].split()[2:] == ["3", "*", "*"], f"expected one monthly schedule, got {crons}"
+    # A push must never cancel the monthly publish halfway through its uploads.
+    assert "github.event_name" in spike["concurrency"]["group"]
+    assert spike["concurrency"]["cancel-in-progress"] == "${{ github.event_name == 'push' }}"

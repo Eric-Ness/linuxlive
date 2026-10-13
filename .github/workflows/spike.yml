@@ -9,7 +9,10 @@
 # local gates in GATES.md re-check. Run it by hand with keep_iso to also
 # download the ISOs; they are kept for one day.
 #
-# publish: run by hand with publish ticked, it copies the four ISOs to the R2
+# Monthly (the 3rd, 04:17 UTC) it also rebuilds and publishes the examples, so
+# their packages never fall more than a month behind Ubuntu's and Fedora's.
+#
+# publish: run by hand with publish ticked (or monthly), it copies the four ISOs to the R2
 #          bucket behind downloads.linuxlive.com once every build has passed,
 #          as <example>/<run id>/<example>.iso (the path the site links to),
 #          with its .sha256 and .packages (the package list) beside it.
@@ -20,6 +23,8 @@ on:
     branches: [main]
     # Docs, working notes and the gate ledger change nothing that gets built or tested.
     paths-ignore: [README.md, GATES.md, NOTES.md]
+  schedule:
+    - cron: "17 4 3 * *"
   workflow_dispatch:
     inputs:
       keep_iso:
@@ -34,9 +39,10 @@ on:
 permissions:
   contents: read
 
+# A push cancels an older push's run, never a hand-run or monthly publish.
 concurrency:
-  group: spike-${{ github.ref }}
-  cancel-in-progress: true
+  group: spike-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 defaults:
   run:
@@ -95,7 +101,7 @@ jobs:
     with:
       spec: examples/${{ matrix.example }}.yaml
       name: ${{ matrix.example }}
-      keep-iso: ${{ inputs.keep_iso == true || inputs.publish == true }}
+      keep-iso: ${{ inputs.keep_iso == true || inputs.publish == true || github.event_name == 'schedule' }}
       iso-retention-days: 1
       # Build with the pipeline at this commit, not the release build.yml defaults to.
       linuxlive-repository: ${{ github.repository }}
@@ -105,7 +111,7 @@ jobs:
     name: publish (${{ matrix.example }})
     # needs: build waits for every example, so either all four ISOs go up or none.
     needs: build
-    if: inputs.publish == true
+    if: inputs.publish == true || github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     strategy:
       matrix:
