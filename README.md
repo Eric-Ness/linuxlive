@@ -195,6 +195,11 @@ Cinnamon on both:
 - Live sessions start no update notifiers, and GNOME Software doesn't check
   for updates. On Fedora's KDE the welcome window no longer offers to start
   an installer.
+- Since v0.1.3 every ISO comes with `<name>.iso.packages`: each installed
+  package, its version and the source package it was built from (Ubuntu's
+  `source=version`, Fedora's source RPM), so the matching source can be found
+  in Ubuntu's and Fedora's archives. The boot check also watches the desktop
+  shell until the test ends, and the verifier fails if it crashes late.
 
 What it did not prove, or found broken:
 

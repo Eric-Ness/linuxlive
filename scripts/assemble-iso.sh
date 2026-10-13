@@ -139,6 +139,13 @@ squash() {
 	log "compressing the root filesystem (zstd level $level)"
 	mksquashfs "$root" "$1" -noappend -comp zstd -Xcompression-level "$level" -b 1M -xattrs -quiet
 }
+# Every installed package with its version and the source package it was built
+# from, published beside the ISO so anyone can find the matching source.
+case $LL_LIVE_LAYOUT in
+casper) chroot "$root" dpkg-query -W --showformat='${binary:Package} ${Version} ${source:Package}=${source:Version}\n' ;;
+liveos) chroot "$root" rpm -qa --qf '%{NAME}.%{ARCH} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{SOURCERPM}\n' ;;
+esac | LC_ALL=C sort >"$out.packages"
+[[ -s $out.packages ]] || die "no package list"
 case $LL_LIVE_LAYOUT in
 casper)
 	mkdir -p "$iso/casper"

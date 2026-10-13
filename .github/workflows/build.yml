@@ -4,7 +4,7 @@
 #
 #   jobs:
 #     build:
-#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.1.2
+#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.1.3
 #
 # The calling repository holds the spec and its art. The pipeline itself is
 # checked out from linuxlive-repository at linuxlive-ref, which defaults to the
@@ -13,7 +13,7 @@
 #
 # Artifacts: results-<name> (logs, screenshots and result.json files, which
 # `python -m linuxlive verify-results` re-checks) and, with keep-iso,
-# iso-<name> (the ISO and its SHA-256).
+# iso-<name> (the ISO, its SHA-256 and its package list).
 name: build
 
 on:
@@ -43,7 +43,7 @@ on:
         description: Pipeline version to build with (a tag, branch or commit)
         type: string
         # Changed with each release; tests/test_workflows.py checks it matches pyproject.toml.
-        default: v0.1.2
+        default: v0.1.3
 
 defaults:
   run:
@@ -152,7 +152,7 @@ jobs:
       - name: Assemble ISO
         run: |
           sudo LL_SQUASHFS_LEVEL=9 LL_RMI_AFTER=1 bash linuxlive/scripts/assemble-iso.sh build/ctx "$IMAGE" "$ISO"
-          sudo chown "$(id -u):$(id -g)" "$ISO" "$ISO.sha256"
+          sudo chown "$(id -u):$(id -g)" "$ISO" "$ISO.sha256" "$ISO.packages"
           df -h /
 
       - name: Inspect ISO
@@ -191,7 +191,7 @@ jobs:
             fi
             if [ -f "${ISO:-none}" ] && [ "$KEEP_ISO" = "true" ]; then
               echo
-              echo "Download **iso-$NAME** under Artifacts below (kept $RETENTION days). It holds the ISO and its SHA-256."
+              echo "Download **iso-$NAME** under Artifacts below (kept $RETENTION days). It holds the ISO, its SHA-256 and its package list."
             fi
             if [ -f build/verify.txt ]; then
               echo
@@ -220,6 +220,7 @@ jobs:
           path: |
             build/*.iso
             build/*.iso.sha256
+            build/*.iso.packages
           retention-days: ${{ inputs.iso-retention-days }}
           compression-level: 0
           if-no-files-found: warn

@@ -11,7 +11,8 @@
 #
 # publish: run by hand with publish ticked, it copies the four ISOs to the R2
 #          bucket behind downloads.linuxlive.com once every build has passed,
-#          as <example>/<run id>/<example>.iso (the path the site links to).
+#          as <example>/<run id>/<example>.iso (the path the site links to),
+#          with its .sha256 and .packages (the package list) beside it.
 name: spike
 
 on:
@@ -134,4 +135,5 @@ jobs:
           # The run id makes every path new, so browsers and Cloudflare may cache it forever.
           aws s3 cp "$EXAMPLE.iso" "s3://$BUCKET/$key/$EXAMPLE.iso" --endpoint-url "$R2_ENDPOINT"             --content-type application/x-iso9660-image --cache-control "public, max-age=31536000, immutable" --no-progress
           aws s3 cp "$EXAMPLE.iso.sha256" "s3://$BUCKET/$key/$EXAMPLE.iso.sha256" --endpoint-url "$R2_ENDPOINT"             --content-type text/plain --cache-control "public, max-age=31536000, immutable" --no-progress
+          aws s3 cp "$EXAMPLE.iso.packages" "s3://$BUCKET/$key/$EXAMPLE.iso.packages" --endpoint-url "$R2_ENDPOINT"             --content-type "text/plain; charset=utf-8" --cache-control "public, max-age=31536000, immutable" --no-progress
           echo "https://downloads.linuxlive.com/$key/$EXAMPLE.iso" >> "$GITHUB_STEP_SUMMARY"
