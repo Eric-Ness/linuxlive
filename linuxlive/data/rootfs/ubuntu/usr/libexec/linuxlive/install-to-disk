@@ -221,18 +221,23 @@ for g in adm sudo lpadmin plugdev netdev dip cdrom; do
 done
 in_target useradd -m -s /bin/bash -c "$fullname" ${groups:+-G "$groups"} "$user"
 { printf '%s:' "$user"; head -n 1 "$password_file"; } | in_target chpasswd
-# No first-login welcome: it carries Ubuntu's own artwork, and the installer
-# already asked everything it would. As casper does for the live user: mark
-# setup done, and hide any first-login autostart for this user.
+# No first-login welcome on the installed system: Ubuntu's carries Ubuntu's own
+# artwork, and the installer already asked everything it would. Marking setup
+# done is not enough (Ubuntu's wizard then shows "what's new"), so it is
+# switched off: its autostart entries go and its systemd user units are masked.
 home=$(in_target getent passwd "$user" | cut -d: -f6)
-mkdir -p "$target$home/.config/autostart"
+mkdir -p "$target$home/.config"
 printf 'yes\n' >"$target$home/.config/gnome-initial-setup-done"
+in_target chown -R "$user:$user" "$home/.config"
 for entry in "$target"/etc/xdg/autostart/*.desktop; do
 	case $(basename "$entry") in
-	*initial-setup* | *provision* | *welcome*) printf '[Desktop Entry]\nHidden=true\n' >"$target$home/.config/autostart/$(basename "$entry")" ;;
+	*initial-setup* | *desktop-provision* | *ubuntu-welcome*) rm -f "$entry" ;;
 	esac
 done
-in_target chown -R "$user:$user" "$home/.config"
+mkdir -p "$target/etc/systemd/user"
+for unit in "$target"/usr/lib/systemd/user/*initial-setup*.service "$target"/usr/lib/systemd/user/*desktop-provision*.service; do
+	[ -e "$unit" ] && ln -sf /dev/null "$target/etc/systemd/user/$(basename "$unit")"
+done
 if [ "$autologin" = 1 ]; then
 	case $LL_DESKTOP in
 	gnome) mkdir -p "$target/etc/gdm3" && printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=%s\n' "$user" >"$target/etc/gdm3/custom.conf" ;;
