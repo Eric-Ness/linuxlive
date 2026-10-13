@@ -8,6 +8,10 @@
 # The results artifact (logs, screenshots, result.json files) is what the
 # local gates in GATES.md re-check. Run it by hand with keep_iso to also
 # download the ISOs; they are kept for one day.
+#
+# publish: run by hand with publish ticked, it copies the four ISOs to the R2
+#          bucket behind downloads.linuxlive.com once every build has passed,
+#          as <example>/<run id>/<example>.iso (the path the site links to).
 name: spike
 
 on:
@@ -19,6 +23,10 @@ on:
     inputs:
       keep_iso:
         description: Upload the ISOs as artifacts (kept for one day)
+        type: boolean
+        default: false
+      publish:
+        description: After all four builds pass, upload the ISOs to downloads.linuxlive.com (R2)
         type: boolean
         default: false
 
@@ -86,8 +94,44 @@ jobs:
     with:
       spec: examples/${{ matrix.example }}.yaml
       name: ${{ matrix.example }}
-      keep-iso: ${{ inputs.keep_iso == true }}
+      keep-iso: ${{ inputs.keep_iso == true || inputs.publish == true }}
       iso-retention-days: 1
       # Build with the pipeline at this commit, not the release build.yml defaults to.
       linuxlive-repository: ${{ github.repository }}
       linuxlive-ref: ${{ github.sha }}
+
+  publish:
+    name: publish (${{ matrix.example }})
+    # needs: build waits for every example, so either all four ISOs go up or none.
+    needs: build
+    if: inputs.publish == true
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        example: [testos-ubuntu, testos-fedora, lawndarts-ubuntu, lawndarts-fedora]
+    env:
+      EXAMPLE: ${{ matrix.example }}
+      BUCKET: ${{ vars.R2_BUCKET || 'linuxlive-downloads' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      # Newer AWS CLIs add checksum headers R2 can reject; send them only when an API requires them.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: iso-${{ matrix.example }}
+          path: iso
+      - name: Check the ISO against its SHA-256
+        working-directory: iso
+        run: sha256sum -c "$EXAMPLE.iso.sha256"
+      - name: Upload to R2
+        working-directory: iso
+        run: |
+          key="$EXAMPLE/$GITHUB_RUN_ID"
+          # The run id makes every path new, so browsers and Cloudflare may cache it forever.
+          aws s3 cp "$EXAMPLE.iso" "s3://$BUCKET/$key/$EXAMPLE.iso" --endpoint-url "$R2_ENDPOINT"             --content-type application/x-iso9660-image --cache-control "public, max-age=31536000, immutable" --no-progress
+          aws s3 cp "$EXAMPLE.iso.sha256" "s3://$BUCKET/$key/$EXAMPLE.iso.sha256" --endpoint-url "$R2_ENDPOINT"             --content-type text/plain --cache-control "public, max-age=31536000, immutable" --no-progress
+          echo "https://downloads.linuxlive.com/$key/$EXAMPLE.iso" >> "$GITHUB_STEP_SUMMARY"

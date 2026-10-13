@@ -36,3 +36,13 @@ def test_spike_builds_examples_through_the_reusable_workflow_at_its_own_commit()
     assert matrix, "spike builds no examples"
     for name in matrix:
         assert (ROOT / "examples" / f"{name}.yaml").is_file(), f"matrix entry {name} has no spec in examples/"
+
+
+def test_spike_publishes_every_example_only_after_all_builds_pass():
+    spike = load_workflow("spike.yml")
+    publish = spike["jobs"]["publish"]
+    assert publish["needs"] == "build"
+    assert publish["if"] == "inputs.publish == true"
+    assert publish["strategy"]["matrix"]["example"] == spike["jobs"]["build"]["strategy"]["matrix"]["example"]
+    # Publishing needs the ISO artifacts.
+    assert "inputs.publish == true" in spike["jobs"]["build"]["with"]["keep-iso"]
