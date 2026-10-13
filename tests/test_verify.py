@@ -104,7 +104,8 @@ def make_results(root: Path, base: str = "ubuntu") -> Path:
         installed = boot_result("uefi-sb-cd", base, session=True)
         installed["mode"] = "installed-uefi-sb"
         installed["facts"].update(boot_medium=["disk"], root_fstype=["ext4"], casper_installed=["no"],
-                                  login_users=["tester"], session_user=["tester"], flatpak=live["facts"]["flatpak"])
+                                  login_users=["tester"], session_user=["tester"], flatpak=live["facts"]["flatpak"],
+                                  first_login_wizard=["none"])
         bios = boot_result("bios-usb", base, session=False)
         bios["mode"] = "installed-bios"
         bios["facts"].update(boot_medium=["disk"])
@@ -158,6 +159,10 @@ BREAKS = {
     "installed disk started the ISO instead": (*_set_fact("installed-uefi-sb", "boot_medium", ["live"]), "started from the disk, not the ISO (boot_medium 'live')"),
     "installed disk without Secure Boot": (*_set_fact("installed-uefi-sb", "secureboot", ["0"]), "installed-uefi-sb: Secure Boot on (guest reports '0')"),
     "installed apps missing": (*_set_fact("installed-uefi-sb", "flatpak", []), "the live session's apps are installed"),
+    "Ubuntu's welcome wizard opens on the installed desktop": (
+        *_set_fact("installed-uefi-sb", "first_login_wizard", ["gnome-initial-setup"]),
+        "no first-login welcome wizard opens (running: 'gnome-initial-setup')",
+    ),
     "installed disk fails under BIOS": ("modes/installed-bios/result.json", lambda d: d.update(outcome="timeout"), "the installed disk boots under BIOS (outcome 'timeout')"),
     "no installer on the live desktop": (*_set_fact(SESSION_MODE, "installer_icon", ["menu-only"]), "the live desktop shows the installer (installer_icon 'menu-only')"),
     "results from another commit": ("meta.json", lambda d: d.update(commit="f" * 40), "results come from commit"),

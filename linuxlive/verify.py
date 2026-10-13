@@ -321,6 +321,7 @@ def check_install(plan: Plan, results: Path) -> list[Outcome]:
         c.expect(_fact(uefi, "login_users") == TEST_USER, f"installed-uefi-sb: the only login user is {TEST_USER!r} (found {_fact(uefi, 'login_users')!r})")
         c.expect(_fact(uefi, "session_user") == TEST_USER, f"installed-uefi-sb: logged in as {TEST_USER!r} (session user {_fact(uefi, 'session_user')!r})")
         c.expect(_fact(uefi, "os_name") == plan.spec.name, f"installed-uefi-sb: os-release NAME is {_fact(uefi, 'os_name')!r}")
+        c.expect(_fact(uefi, "first_login_wizard") == "none", f"installed-uefi-sb: no first-login welcome wizard opens (running: {_fact(uefi, 'first_login_wizard')!r})")
         apps = sorted(_facts(live, "flatpak"))
         c.expect(sorted(_facts(uefi, "flatpak")) == apps, f"installed-uefi-sb: the live session's apps are installed ({sorted(_facts(uefi, 'flatpak'))} vs {apps})")
     bios = _load(modes / "installed-bios" / "result.json")

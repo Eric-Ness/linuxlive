@@ -273,6 +273,10 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		fi
 		# Units that failed later, such as ones started after login.
 		fact failed_units_after_settle "$(failed_units)"
+		# A first-login welcome wizard (upstream's, with upstream's artwork), if one runs.
+		wizards=$(pgrep -u "$user" -a -f 'initial-setup|desktop-provision|ubuntu-welcome' 2>/dev/null |
+			awk '{print $2}' | xargs -r -n 1 basename | sort -u | tr '\n' ' ' | sed 's/ $//')
+		fact first_login_wizard "${wizards:-none}"
 		fact update_notifiers "$(update_notifiers "$user")"
 		fact gnome_software_updates "$(gnome_software_updates "$user" "$pid")"
 		if [ "$shell" = plasmashell ]; then

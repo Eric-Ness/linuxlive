@@ -221,6 +221,18 @@ for g in adm sudo lpadmin plugdev netdev dip cdrom; do
 done
 in_target useradd -m -s /bin/bash -c "$fullname" ${groups:+-G "$groups"} "$user"
 { printf '%s:' "$user"; head -n 1 "$password_file"; } | in_target chpasswd
+# No first-login welcome: it carries Ubuntu's own artwork, and the installer
+# already asked everything it would. As casper does for the live user: mark
+# setup done, and hide any first-login autostart for this user.
+home=$(in_target getent passwd "$user" | cut -d: -f6)
+mkdir -p "$target$home/.config/autostart"
+printf 'yes\n' >"$target$home/.config/gnome-initial-setup-done"
+for entry in "$target"/etc/xdg/autostart/*.desktop; do
+	case $(basename "$entry") in
+	*initial-setup* | *provision* | *welcome*) printf '[Desktop Entry]\nHidden=true\n' >"$target$home/.config/autostart/$(basename "$entry")" ;;
+	esac
+done
+in_target chown -R "$user:$user" "$home/.config"
 if [ "$autologin" = 1 ]; then
 	case $LL_DESKTOP in
 	gnome) mkdir -p "$target/etc/gdm3" && printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=%s\n' "$user" >"$target/etc/gdm3/custom.conf" ;;
