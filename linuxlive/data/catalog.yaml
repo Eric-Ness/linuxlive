@@ -23,6 +23,11 @@ bases:
     blocked_packages: [firefox, thunderbird, snapd, dracut, cloud-init]
     # Signed boot chain for Secure Boot, taken from these packages.
     efi_packages: [shim-signed, grub-efi-amd64-signed]
+    # The installer's tools, in the live image (usr/libexec/linuxlive/installer).
+    installer_packages: [gdisk, dosfstools, squashfs-tools, python3-gi, gir1.2-gtk-3.0]
+    # Carried as .debs (resolved against the finished image) and installed by
+    # the installer onto the target disk, where their postinsts find a real one.
+    bootloader_packages: [grub-efi-amd64, grub-efi-amd64-signed, shim-signed, grub-pc-bin, efibootmgr, mokutil]
 
   fedora:
     label: Fedora 44

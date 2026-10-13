@@ -25,6 +25,13 @@ fact image_id "${IMAGE_ID:-}"
 fact image_version "${IMAGE_VERSION:-}"
 fact kernel "$(uname -r)"
 fact cmdline "$(cat /proc/cmdline)"
+# Live from the ISO, or a system the installer put on a disk.
+if grep -qwE 'boot=casper|rd\.live\.image' /proc/cmdline; then fact boot_medium live; else fact boot_medium disk; fi
+fact root_fstype "$(findmnt -no FSTYPE / 2>/dev/null)"
+if command -v dpkg-query >/dev/null 2>&1; then
+	if dpkg-query -W -f='${Status}' casper 2>/dev/null | grep -q 'ok installed'; then fact casper_installed yes; else fact casper_installed no; fi
+fi
+fact login_users "$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 {print $1}' | sort | tr '\n' ' ' | sed 's/ $//')"
 
 if [ -d /sys/firmware/efi ]; then
 	fact firmware uefi
@@ -234,6 +241,14 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		fact session_desktop "$(loginctl show-session "$session" -p Desktop --value 2>/dev/null)"
 		fact session_user "$user"
 		fact shell "$shell"
+		# The installer's launcher: on the live user's desktop, or missing.
+		if [ -f /usr/share/applications/linuxlive-install.desktop ]; then
+			if [ -f "$(getent passwd "$user" | cut -d: -f6)/Desktop/linuxlive-install.desktop" ]; then
+				fact installer_icon desktop
+			else
+				fact installer_icon menu-only
+			fi
+		fi
 		if [ "$shell" = plasmashell ]; then
 			fact kde_launcher_icon "$(kde_launcher_icons "$user")"
 		fi

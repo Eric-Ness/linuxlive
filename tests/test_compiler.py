@@ -155,8 +155,10 @@ def test_write_replaces_a_previous_context_but_not_other_directories(workspace, 
 def test_executables_are_marked_executable(workspace):
     ctx, _ = build_context(load_spec(write_spec(workspace, spec_data(desktop="kde"))))
     modes = {path: mode for path, (_data, mode) in ctx.files().items()}
+    # Desktop launchers in a Desktop folder only open when executable.
+    launchers = ("rootfs/etc/skel/Desktop/",)
     for path, mode in modes.items():
-        expected = 0o755 if path.startswith("rootfs/usr/libexec/") else 0o644
+        expected = 0o755 if path.startswith("rootfs/usr/libexec/") or path.startswith(launchers) else 0o644
         assert mode == expected, path
 
 

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=linuxlive installer (from the boot menu)
+Exec=/usr/libexec/linuxlive/install-on-boot
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
