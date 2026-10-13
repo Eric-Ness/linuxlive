@@ -126,9 +126,17 @@ problem=$(disk_problem "$disk")
 [ "$problem" = ok ] || die "$disk cannot be used: $problem"
 source=${image:-$LL_IMAGE_REF}
 progress 2 "Checking the internet connection"
-curl -fsS --max-time 20 -o /dev/null "https://${source%%/*}/" 2>/dev/null ||
-	curl -sS --max-time 20 -o /dev/null "https://${source%%/*}/v2/" 2>/dev/null ||
-	die "no internet connection: installing $LL_NAME downloads it (about 3 GB). Connect to a network and try again"
+# Up to 90 seconds: a network can still be coming up (Wi-Fi after login, or
+# the unattended test install early in the boot).
+online=""
+for _ in $(seq 1 18); do
+	if curl -sS --max-time 10 -o /dev/null "https://${source%%/*}/v2/" 2>/dev/null; then
+		online=1
+		break
+	fi
+	sleep 5
+done
+[ -n "$online" ] || die "no internet connection: installing $LL_NAME downloads it (about 3 GB). Connect to a network and try again"
 
 trap cleanup EXIT
 progress 4 "Erasing $disk and downloading $LL_NAME (about 3 GB)"

@@ -5,7 +5,9 @@ ConditionVirtualization=vm
 # Only in the live session (Ubuntu casper or Fedora dmsquash-live).
 ConditionKernelCommandLine=|boot=casper
 ConditionKernelCommandLine=|rd.live.image
-After=local-fs.target systemd-udev-settle.service
+# Fedora installs from the registry, so after the network is up.
+Wants=network-online.target
+After=local-fs.target systemd-udev-settle.service network-online.target
 
 [Service]
 Type=exec
