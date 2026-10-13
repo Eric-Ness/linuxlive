@@ -65,6 +65,7 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
     if session:
         facts["shell"] = ["gnome-shell" if base == "ubuntu" else "plasmashell"]
         facts["shell_after_settle"] = facts["shell"]
+        facts["shell_watch"] = facts["shell"]
         facts["failed_units"] = ["none"]
         facts["failed_units_after_settle"] = ["none"]
         facts["update_notifiers"] = ["none"]
@@ -183,6 +184,15 @@ BREAKS = {
         f"modes/{SESSION_MODE}/result.json",
         lambda d: d["facts"].update(shell_after_settle=["none"], session_error=["cinnamon[812]: segfault at 0 ip 00007f"]),
         "desktop shell still running 30 s after login: 'none', expected 'gnome-shell'; session errors: cinnamon[812]: segfault",
+    ),
+    "shell crashed after the settle check": (
+        f"modes/{SESSION_MODE}/result.json",
+        lambda d: d["facts"].update(shell_crashed=["64"], session_error=["systemd-coredump[990]: Process 812 (cinnamon) of user 999 dumped core."]),
+        "desktop shell kept running until the test ended (watched: 'gnome-shell', crashed 64 s after login); session errors: systemd-coredump",
+    ),
+    "shell not watched": (
+        *_set_fact(SESSION_MODE, "shell_watch", []),
+        "desktop shell kept running until the test ended (watched: None)",
     ),
     "Ubuntu logo on the dock": (*_set_fact(SESSION_MODE, "dock_show_apps_icon", ["ubuntu"]), "dock's Show Apps icon is 'ubuntu'"),
     "dock icon not reported": (*_set_fact(SESSION_MODE, "dock_show_apps_icon", []), "dock's Show Apps icon is None"),

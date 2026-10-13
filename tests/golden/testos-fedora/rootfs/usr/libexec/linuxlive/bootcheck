@@ -111,8 +111,8 @@ launcher_icons_in() {
 		}' "$1" | sed 's/ $//'
 }
 
-# Error lines from a user's X session log, their journal and the kernel's
-# (which logs segfaults), for a desktop shell that crashed.
+# Error lines from a user's X session log, their journal, the kernel's (which
+# logs segfaults) and systemd-coredump's, for a desktop shell that crashed.
 session_errors() {
 	home=$(getent passwd "$1" | cut -d: -f6)
 	uid=$(id -u "$1")
@@ -120,7 +120,8 @@ session_errors() {
 		if [ -f "$home/.xsession-errors" ]; then tail -n 300 "$home/.xsession-errors"; fi
 		journalctl -b --no-pager -o cat "_UID=$uid" 2>/dev/null | tail -n 500
 		journalctl -k -b --no-pager -o cat 2>/dev/null | grep -i segfault | tail -n 5
-	} | grep -iE 'error|critical|fatal|segfault|crash|traceback|assert' | tail -n 12 |
+		journalctl -b --no-pager -o cat -t systemd-coredump 2>/dev/null | head -n 20
+	} | grep -iE 'error|critical|fatal|segfault|crash|traceback|assert|dumped core|signal|#[0-9]+ ' | tail -n 20 |
 		while IFS= read -r line; do fact session_error "$line"; done
 }
 
@@ -243,6 +244,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 				while IFS= read -r line; do fact avc "$line"; done
 		fi
 		say LINUXLIVE_SESSION_READY
+		ready=$(date +%s)
 		# A desktop shell can start and then crash (Cinnamon then shows its
 		# fallback-mode dialog). Look again once the session has settled, and
 		# keep the session's own error lines if the shell is gone.
@@ -264,6 +266,17 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		if systemctl cat casper-md5check.service >/dev/null 2>&1; then
 			fact casper_md5check "$(casper_md5check)"
 		fi
+		[ -n "$pid" ] || exit 0
+		# Then keep watching until the test harness stops the VM: Cinnamon has
+		# crashed a minute after login, after the look above. Its launcher then
+		# starts metacity and shows the fallback-mode dialog, with a process
+		# still called cinnamon-launch(er), so the shell's own pid is watched.
+		fact shell_watch "$shell"
+		while [ -d "/proc/$pid" ] && ! pgrep -u "$user" -x metacity >/dev/null 2>&1; do
+			sleep 2
+		done
+		fact shell_crashed "$(($(date +%s) - ready))"
+		session_errors "$user"
 		exit 0
 	done
 	sleep 5

@@ -230,6 +230,16 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
         f"desktop shell still running 30 s after login: {after!r}, expected {shell!r}"
         + (f"; session errors: {' | '.join(errors)}" if errors else ""),
     )
+    # bootcheck goes on watching the shell until the VM is stopped after the
+    # last screenshot, and says so if it dies (or Cinnamon falls back) later.
+    crashed = _fact(result, "shell_crashed")
+    c.expect(
+        _fact(result, "shell_watch") == shell and crashed is None,
+        f"desktop shell kept running until the test ended (watched: {_fact(result, 'shell_watch')!r}"
+        + (f", crashed {crashed} s after login" if crashed is not None else "")
+        + ")"
+        + (f"; session errors: {' | '.join(errors)}" if errors and crashed is not None else ""),
+    )
     c.expect(
         _fact(result, "plymouth_theme") == "linuxlive",
         f"Plymouth theme is {_fact(result, 'plymouth_theme')!r}, expected 'linuxlive'",
