@@ -179,7 +179,15 @@ if ! mount -o rw "$root" "$mnt" 2>/dev/null || ! touch "$mnt/.linuxlive-rw" 2>/d
 	die "the installed system's partition $root could not be opened for writing"
 fi
 rm -f "$mnt/.linuxlive-rw"
-deploy=$(find "$mnt/ostree/deploy" -mindepth 3 -maxdepth 3 -type d -path '*/deploy/*.0' | head -n 1)
+# Exactly ostree/deploy/<stateroot>/deploy/<id>.0: with composefs there is also
+# a .../backing/<id>.0, which has no /etc.
+deploy=""
+for d in "$mnt"/ostree/deploy/*/deploy/*.0; do
+	if [ -d "$d/etc" ]; then
+		deploy=$d
+		break
+	fi
+done
 [ -n "$deploy" ] || die "the installed system was not found on $root"
 var=$(dirname "$(dirname "$deploy")")/var
 
