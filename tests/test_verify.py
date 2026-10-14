@@ -51,6 +51,7 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         "os_pretty_name": ["TestOS 0.1 (based on Ubuntu 26.04 LTS)" if base == "ubuntu" else "TestOS 0.1 (based on Fedora Linux 44 (Kinoite))"],
         "image_id": ["testos"],
         "image_version": ["0.1"],
+        "build_id": ["2026.10.15.7"],
         "firmware": ["bios" if mode.startswith("bios") else "uefi"],
         "secureboot": ["1" if mode == SECURE_BOOT_MODE else "0"],
         "plymouth_theme": ["linuxlive"],
@@ -74,6 +75,7 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         facts["update_notifiers"] = ["none"]
         facts["gnome_software_updates"] = ["false" if base == "ubuntu" else "absent"]
         facts["installer_icon"] = ["desktop"]
+        facts["installer_disks"] = ["1"]
         facts["first_login_wizard"] = ["none"]
         if base == "ubuntu":
             facts["casper_md5check"] = ["pass"]
@@ -100,7 +102,7 @@ FEDORA_IMAGE = "ghcr.io/eric-ness/linuxlive/testos-fedora:latest"
 
 def make_results(root: Path, base: str = "ubuntu") -> Path:
     root.mkdir(parents=True, exist_ok=True)
-    meta = {"commit": COMMIT, "base": base, "spec": f"examples/testos-{base}.yaml"}
+    meta = {"commit": COMMIT, "base": base, "spec": f"examples/testos-{base}.yaml", "build_id": "2026.10.15.7"}
     if base == "fedora":
         meta["image"] = FEDORA_IMAGE
     (root / "meta.json").write_text(json.dumps(meta))
@@ -199,8 +201,13 @@ BREAKS = {
     ),
     "installed disk fails under BIOS": ("modes/installed-bios/result.json", lambda d: d.update(outcome="timeout"), "the installed disk boots under BIOS (outcome 'timeout')"),
     "no installer on the live desktop": (*_set_fact(SESSION_MODE, "installer_icon", ["menu-only"]), "the live desktop shows the installer (installer_icon 'menu-only')"),
+    "the installer's window may not list disks": (
+        *_set_fact(SESSION_MODE, "installer_disks", ["refused: sudo: a password is required"]),
+        "the installer's window can list the disks as the live user (installer_disks 'refused: sudo: a password is required')",
+    ),
     "results from another commit": ("meta.json", lambda d: d.update(commit="f" * 40), "results come from commit"),
     "results for another base": ("meta.json", lambda d: d.update(base="fedora"), "results are for base"),
+    "the build is not the one named": (*_set_fact(SESSION_MODE, "build_id", ["2026.09.03.1"]), "BUILD_ID is '2026.09.03.1', expected this build's '2026.10.15.7'"),
     "wrong volume id": ("iso.json", lambda d: d.update(volume_id="OTHER"), "volume ID is 'OTHER'"),
     "no EFI boot entry": ("iso.json", lambda d: d["el_torito"].update(efi=False), "bootable EFI entry"),
     "no BIOS boot entry": ("iso.json", lambda d: d["el_torito"].update(bios=False), "bootable BIOS entry"),

@@ -23,6 +23,7 @@ fact os_name "$NAME"
 fact os_pretty_name "$PRETTY_NAME"
 fact image_id "${IMAGE_ID:-}"
 fact image_version "${IMAGE_VERSION:-}"
+fact build_id "${BUILD_ID:-}"
 fact kernel "$(uname -r)"
 fact cmdline "$(cat /proc/cmdline)"
 # Live from the ISO, or a system the installer put on a disk.
@@ -286,6 +287,13 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 				fact installer_icon desktop
 			else
 				fact installer_icon menu-only
+			fi
+			# What the installer's window sees: it lists the disks as this user,
+			# through sudo -n, exactly so (usr/libexec/linuxlive/installer).
+			if listing=$(runuser -u "$user" -- sudo -n /usr/libexec/linuxlive/install-to-disk --list-disks 2>&1); then
+				fact installer_disks "$(printf '%s\n' "$listing" | grep -c .)"
+			else
+				fact installer_disks "refused: $(printf '%s' "$listing" | tail -n 1)"
 			fi
 		fi
 		if [ "$shell" = plasmashell ]; then

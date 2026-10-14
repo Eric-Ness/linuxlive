@@ -127,5 +127,7 @@ RUN set -eux; \\
 # Branding and linuxlive's boot check.
 COPY --from=efi /out/ /usr/lib/linuxlive/efi/
 COPY rootfs/ /
-{build_step(plan)}RUN /bin/sh /usr/libexec/linuxlive/finalize
+{build_step(plan)}# LL_BUILD_ID (optional) names this build in os-release's BUILD_ID.
+ARG LL_BUILD_ID=""
+RUN /bin/sh /usr/libexec/linuxlive/finalize
 """

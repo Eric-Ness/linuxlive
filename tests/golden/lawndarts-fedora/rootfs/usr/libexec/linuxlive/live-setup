@@ -54,3 +54,23 @@ if [ -e /usr/libexec/plasma-welcome ] || command -v plasma-welcome >/dev/null 2>
 		log "Plasma Welcome: will not open for $(basename "$home")"
 	done
 fi
+
+# The installer's window runs install-to-disk as root through sudo -n, with
+# no password to ask for. Ubuntu's live user may use sudo freely; Fedora's
+# (from livesys) need not, and then the window finds no disks. So the live
+# session's users may run that one command. This root is thrown away at
+# shutdown and installs copy the image, not it, so no installed system keeps it.
+rules=/etc/sudoers.d/linuxlive-live-installer
+: >"$rules"
+for home in /home/*; do
+	[ -d "$home" ] || continue
+	user=$(stat -c %U "$home")
+	[ "$user" != root ] && [ "$user" != UNKNOWN ] || continue
+	printf '%s ALL=(root) NOPASSWD: /usr/libexec/linuxlive/install-to-disk\n' "$user" >>"$rules"
+	log "the installer: $user may run it"
+done
+chmod 0440 "$rules"
+if command -v visudo >/dev/null 2>&1 && ! visudo -cqf "$rules"; then
+	log "the installer's sudo rule is not valid; removing it"
+	rm -f "$rules"
+fi
