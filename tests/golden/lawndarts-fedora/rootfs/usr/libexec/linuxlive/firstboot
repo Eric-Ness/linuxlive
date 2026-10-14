@@ -21,6 +21,8 @@ printf '[Desktop Entry]\nHidden=true\n' >/usr/local/share/applications/linuxlive
 
 useradd -m -c "$LL_FULLNAME" -G wheel -p "$LL_PASSWORD_HASH" "$LL_USER"
 home=$(getent passwd "$LL_USER" | cut -d: -f6)
+# And from the new user's own desktop, should a copy have come with the home.
+rm -f "$home/Desktop/linuxlive-install.desktop"
 
 # No first-login welcome (upstream's, with upstream's artwork): setup is
 # marked done, and its autostart entries and user units are switched off.

@@ -71,6 +71,7 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         facts["update_notifiers"] = ["none"]
         facts["gnome_software_updates"] = ["false" if base == "ubuntu" else "absent"]
         facts["installer_icon"] = ["desktop"]
+        facts["first_login_wizard"] = ["none"]
         if base == "ubuntu":
             facts["casper_md5check"] = ["pass"]
         if base == "fedora":  # TestOS on Fedora is KDE
@@ -109,7 +110,7 @@ def make_results(root: Path, base: str = "ubuntu") -> Path:
     installed = boot_result("uefi-sb-cd", base, session=True)
     installed["mode"] = "installed-uefi-sb"
     installed["facts"].update(boot_medium=["disk"], login_users=["tester"], session_user=["tester"],
-                              flatpak=live["facts"]["flatpak"], first_login_wizard=["none"])
+                              flatpak=live["facts"]["flatpak"], first_login_wizard=["none"], installer_icon=["menu-only"])
     if base == "ubuntu":
         installed["facts"].update(root_fstype=["ext4"], casper_installed=["no"])
     else:
@@ -351,6 +352,16 @@ def test_fedora_install_that_kept_kde_setup_user_fails(tmp_path):
     results = make_results(tmp_path / "r", "fedora")
     edit_json(results / "modes/installed-uefi-sb/result.json", lambda d: d["facts"].update(session_user=["plasma-setup"]))
     assert any("logged in as 'tester' (session user 'plasma-setup')" in f for f in failures(verify_results(load("fedora"), results, ["install"], expect_commit=COMMIT)))
+
+
+def test_kde_welcome_and_a_left_over_installer_icon_fail(tmp_path):
+    # Round 9: KDE's Welcome Center (Fedora's logo) opened, and Install TestOS stayed on the installed desktop.
+    results = make_results(tmp_path / "r", "fedora")
+    edit_json(results / f"modes/{SESSION_MODE}/result.json", lambda d: d["facts"].update(first_login_wizard=["plasma-welcome"]))
+    edit_json(results / "modes/installed-uefi-sb/result.json", lambda d: d["facts"].update(installer_icon=["desktop"]))
+    found = failures(verify_results(load("fedora"), results, ["session", "install"], expect_commit=COMMIT))
+    assert any("no upstream welcome wizard opens in the live session (running: 'plasma-welcome')" in f for f in found)
+    assert any("no installer on the installed desktop (installer_icon 'desktop')" in f for f in found)
 
 
 def test_fedora_build_without_a_published_image_has_no_install_to_check(tmp_path):

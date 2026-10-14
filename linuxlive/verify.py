@@ -224,6 +224,7 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
     shell = plan.desktop.shell_process
     c.expect(_fact(result, "shell") == shell, f"desktop shell is {_fact(result, 'shell')!r}, expected {shell!r}")
     c.expect(_fact(result, "installer_icon") == "desktop", f"the live desktop shows the installer (installer_icon {_fact(result, 'installer_icon')!r})")
+    c.expect(_fact(result, "first_login_wizard") == "none", f"no upstream welcome wizard opens in the live session (running: {_fact(result, 'first_login_wizard')!r})")
     after = _fact(result, "shell_after_settle")
     errors = _facts(result, "session_error")
     c.expect(
@@ -333,6 +334,7 @@ def check_install(plan: Plan, results: Path) -> list[Outcome]:
         c.expect(_fact(uefi, "session_user") == TEST_USER, f"installed-uefi-sb: logged in as {TEST_USER!r} (session user {_fact(uefi, 'session_user')!r})")
         c.expect(_fact(uefi, "os_name") == plan.spec.name, f"installed-uefi-sb: os-release NAME is {_fact(uefi, 'os_name')!r}")
         c.expect(_fact(uefi, "first_login_wizard") == "none", f"installed-uefi-sb: no first-login welcome wizard opens (running: {_fact(uefi, 'first_login_wizard')!r})")
+        c.expect(_fact(uefi, "installer_icon") != "desktop", f"installed-uefi-sb: no installer on the installed desktop (installer_icon {_fact(uefi, 'installer_icon')!r})")
         apps = sorted(_facts(live, "flatpak"))
         c.expect(sorted(_facts(uefi, "flatpak")) == apps, f"installed-uefi-sb: the live session's apps are installed ({sorted(_facts(uefi, 'flatpak'))} vs {apps})")
     bios = _load(modes / "installed-bios" / "result.json")
