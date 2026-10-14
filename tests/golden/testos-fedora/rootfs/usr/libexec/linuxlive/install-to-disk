@@ -203,6 +203,20 @@ progress 92 "Creating $user"
 # Files written into the new /etc get the SELinux label the policy gives that
 # path (the live system runs the same policy as the image).
 label() { ctx=$(matchpathcon -n "$1" 2>/dev/null) && chcon -h "$ctx" "$deploy$1" 2>/dev/null || true; }
+
+# No first-boot setup wizard: KDE's (plasma-setup, which creates a user of its
+# own) and GNOME's would run before linuxlive-firstboot's user exists. The
+# image is the live system's, so its unit names are found here and masked in
+# the new /etc.
+for dir in system user; do
+	for unit in /usr/lib/systemd/"$dir"/*plasma-setup* /usr/lib/systemd/"$dir"/*initial-setup*; do
+		[ -e "$unit" ] || continue
+		mkdir -p "$deploy/etc/systemd/$dir"
+		ln -sfn /dev/null "$deploy/etc/systemd/$dir/$(basename "$unit")"
+		label "/etc/systemd/$dir/$(basename "$unit")"
+		printf 'masked %s\n' "$(basename "$unit")"
+	done
+done
 printf '%s\n' "$hostname" >"$deploy/etc/hostname" || die "could not write to the installed system's /etc"
 label /etc/hostname
 ln -sfn "../usr/share/zoneinfo/$timezone" "$deploy/etc/localtime"

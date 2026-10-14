@@ -28,6 +28,8 @@ fact cmdline "$(cat /proc/cmdline)"
 # Live from the ISO, or a system the installer put on a disk.
 if grep -qwE 'boot=casper|rd\.live\.image' /proc/cmdline; then fact boot_medium live; else fact boot_medium disk; fi
 fact root_fstype "$(findmnt -no FSTYPE / 2>/dev/null)"
+# A bootc system with composefs has an overlay at /; its file system is at /sysroot.
+if mountpoint -q /sysroot 2>/dev/null; then fact sysroot_fstype "$(findmnt -no FSTYPE /sysroot 2>/dev/null)"; fi
 if command -v dpkg-query >/dev/null 2>&1; then
 	if dpkg-query -W -f='${Status}' casper 2>/dev/null | grep -q 'ok installed'; then fact casper_installed yes; else fact casper_installed no; fi
 fi

@@ -113,7 +113,7 @@ def make_results(root: Path, base: str = "ubuntu") -> Path:
     if base == "ubuntu":
         installed["facts"].update(root_fstype=["ext4"], casper_installed=["no"])
     else:
-        installed["facts"].update(root_fstype=["xfs"], bootc_image=[FEDORA_IMAGE])
+        installed["facts"].update(root_fstype=["overlay"], sysroot_fstype=["xfs"], bootc_image=[FEDORA_IMAGE])
     bios = boot_result("bios-usb", base, session=False)
     bios["mode"] = "installed-bios"
     bios["facts"].update(boot_medium=["disk"])
@@ -344,6 +344,13 @@ def test_fedora_install_is_checked_against_the_published_image(tmp_path):
     edit_json(results / "modes/installed-uefi-sb/result.json", lambda d: d["facts"].update(bootc_image=["ghcr.io/someone/else:latest"]))
     found = failures(verify_results(load("fedora"), results, ["install"], expect_commit=COMMIT))
     assert any("a bootc system updating from 'ghcr.io/eric-ness/linuxlive/testos-fedora:latest'" in f for f in found)
+
+
+def test_fedora_install_that_kept_kde_setup_user_fails(tmp_path):
+    # Round 7: KDE's own first-boot setup logged in as plasma-setup instead of the user.
+    results = make_results(tmp_path / "r", "fedora")
+    edit_json(results / "modes/installed-uefi-sb/result.json", lambda d: d["facts"].update(session_user=["plasma-setup"]))
+    assert any("logged in as 'tester' (session user 'plasma-setup')" in f for f in failures(verify_results(load("fedora"), results, ["install"], expect_commit=COMMIT)))
 
 
 def test_fedora_build_without_a_published_image_has_no_install_to_check(tmp_path):

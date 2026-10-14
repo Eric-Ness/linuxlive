@@ -319,8 +319,12 @@ def check_install(plan: Plan, results: Path) -> list[Outcome]:
         c.expect(uefi.get("outcome") == "session", f"installed-uefi-sb: the installed disk boots to the desktop (outcome {uefi.get('outcome')!r})")
         c.expect(_fact(uefi, "boot_medium") == "disk", f"installed-uefi-sb: started from the disk, not the ISO (boot_medium {_fact(uefi, 'boot_medium')!r})")
         c.expect(_fact(uefi, "secureboot") == "1", f"installed-uefi-sb: Secure Boot on (guest reports {_fact(uefi, 'secureboot')!r})")
-        fstype = "xfs" if fedora else "ext4"
-        c.expect(_fact(uefi, "root_fstype") == fstype, f"installed-uefi-sb: root file system is {_fact(uefi, 'root_fstype')!r}, expected {fstype!r}")
+        if fedora:
+            # composefs: an overlay at /, on the xfs bootc made at /sysroot.
+            c.expect(_fact(uefi, "root_fstype") == "overlay" and _fact(uefi, "sysroot_fstype") == "xfs",
+                     f"installed-uefi-sb: composefs root on xfs (/ is {_fact(uefi, 'root_fstype')!r}, /sysroot is {_fact(uefi, 'sysroot_fstype')!r})")
+        else:
+            c.expect(_fact(uefi, "root_fstype") == "ext4", f"installed-uefi-sb: root file system is {_fact(uefi, 'root_fstype')!r}, expected 'ext4'")
         if fedora:
             c.expect(_fact(uefi, "bootc_image") == image, f"installed-uefi-sb: a bootc system updating from {image!r} (bootc status: {_fact(uefi, 'bootc_image')!r})")
         else:
