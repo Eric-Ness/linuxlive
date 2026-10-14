@@ -165,7 +165,9 @@ progress 76 "Setting up the system"
 udevadm settle
 root=$(lsblk -bnpo PATH,SIZE,TYPE "$disk" | awk '$3 == "part"' | sort -k2 -n | tail -n 1 | awk '{print $1}')
 mnt=$(mktemp -d /tmp/linuxlive-root.XXXXXX)
-mount "$root" "$mnt"
+# bootc leaves the partition's block device read-only when it finishes.
+blockdev --setrw "$root" 2>/dev/null || true
+mount -o rw "$root" "$mnt" || die "the installed system's partition $root could not be opened for writing"
 deploy=$(find "$mnt/ostree/deploy" -mindepth 3 -maxdepth 3 -type d -path '*/deploy/*.0' | head -n 1)
 [ -n "$deploy" ] || die "the installed system was not found on $root"
 var=$(dirname "$(dirname "$deploy")")/var
@@ -173,16 +175,16 @@ var=$(dirname "$(dirname "$deploy")")/var
 # The live session's apps (Flatpaks are added to the ISO, not to the image).
 if [ -d /var/lib/flatpak ] && [ -n "$(ls -A /var/lib/flatpak 2>/dev/null)" ]; then
 	progress 80 "Copying the apps"
-	mkdir -p "$var/lib"
+	mkdir -p "$var/lib" || die "could not write to the installed system ($var)"
 	rm -rf "$var/lib/flatpak"
-	cp -a /var/lib/flatpak "$var/lib/flatpak"
+	cp -a /var/lib/flatpak "$var/lib/flatpak" || die "copying the apps failed"
 fi
 
 progress 92 "Creating $user"
 # Files written into the new /etc get the SELinux label the policy gives that
 # path (the live system runs the same policy as the image).
 label() { ctx=$(matchpathcon -n "$1" 2>/dev/null) && chcon -h "$ctx" "$deploy$1" 2>/dev/null || true; }
-printf '%s\n' "$hostname" >"$deploy/etc/hostname"
+printf '%s\n' "$hostname" >"$deploy/etc/hostname" || die "could not write to the installed system's /etc"
 label /etc/hostname
 ln -sfn "../usr/share/zoneinfo/$timezone" "$deploy/etc/localtime"
 label /etc/localtime
@@ -194,7 +196,7 @@ umask 077
 	printf "LL_FULLNAME='%s'\n" "$fullname"
 	printf "LL_PASSWORD_HASH='%s'\n" "$(head -n 1 "$password_file" | openssl passwd -6 -stdin)"
 	printf "LL_AUTOLOGIN='%s'\n" "$autologin"
-} >"$deploy/etc/linuxlive/firstboot.env"
+} >"$deploy/etc/linuxlive/firstboot.env" || die "could not save the user's details for the first start"
 label /etc/linuxlive
 label /etc/linuxlive/firstboot.env
 
