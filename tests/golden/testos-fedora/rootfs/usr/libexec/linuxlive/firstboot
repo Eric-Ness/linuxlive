@@ -42,8 +42,12 @@ if [ "${LL_AUTOLOGIN:-0}" = 1 ]; then
 		printf '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=%s\n' "$LL_USER" >/etc/gdm/custom.conf
 		;;
 	kde)
-		mkdir -p /etc/sddm.conf.d
-		printf '[Autologin]\nUser=%s\nSession=plasma\n' "$LL_USER" >/etc/sddm.conf.d/90-linuxlive-autologin.conf
+		# Fedora 44's KDE uses Plasma Login Manager (an SDDM fork, same
+		# [Autologin] keys); older images use SDDM itself. Write both.
+		for dir in /etc/plasmalogin.conf.d /etc/sddm.conf.d; do
+			mkdir -p "$dir"
+			printf '[Autologin]\nUser=%s\nSession=plasma\n' "$LL_USER" >"$dir/90-linuxlive-autologin.conf"
+		done
 		;;
 	cinnamon)
 		# Fedora's LightDM only logs in automatically members of autologin.
@@ -54,5 +58,5 @@ if [ "${LL_AUTOLOGIN:-0}" = 1 ]; then
 		;;
 	esac
 fi
-restorecon -R /etc/gdm /etc/sddm.conf.d /etc/lightdm /etc/systemd/user /usr/local/share/applications "$home" 2>/dev/null || true
+restorecon -R /etc/gdm /etc/sddm.conf.d /etc/plasmalogin.conf.d /etc/lightdm /etc/systemd/user /usr/local/share/applications "$home" 2>/dev/null || true
 rm -f "$env"
