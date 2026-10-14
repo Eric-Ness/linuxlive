@@ -43,7 +43,9 @@ RUN set -eux; \
 COPY extras/ /tmp/linuxlive-extras/
 RUN /bin/sh /usr/libexec/linuxlive/user-build /tmp/linuxlive-extras && rm -rf /tmp/linuxlive-extras
 
-# Branding, linuxlive's boot check and the initramfs.
+# Branding, linuxlive's boot check and the initramfs. LL_BUILD_ID (optional)
+# names this build in os-release's BUILD_ID.
+ARG LL_BUILD_ID=""
 RUN /bin/sh /usr/libexec/linuxlive/finalize
 
 RUN bootc container lint

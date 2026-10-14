@@ -78,4 +78,6 @@ COPY rootfs/ /
 # The distro's own build steps (repos, then scripts.build in the spec), as root.
 COPY extras/ /tmp/linuxlive-extras/
 RUN /bin/sh /usr/libexec/linuxlive/user-build /tmp/linuxlive-extras && rm -rf /tmp/linuxlive-extras
+# LL_BUILD_ID (optional) names this build in os-release's BUILD_ID.
+ARG LL_BUILD_ID=""
 RUN /bin/sh /usr/libexec/linuxlive/finalize

@@ -35,10 +35,18 @@ rewrite_os_release() {
 	{
 		printf 'NAME="%s"\n' "$LL_NAME"
 		printf 'PRETTY_NAME="%s %s (based on %s)"\n' "$LL_NAME" "$LL_VERSION" "$upstream"
-		grep -Ev '^(NAME|PRETTY_NAME|IMAGE_ID|IMAGE_VERSION|LOGO)=' "$src" || true
+		grep -Ev '^(NAME|PRETTY_NAME|IMAGE_ID|IMAGE_VERSION|LOGO|BUILD_ID)=' "$src" || true
 		printf 'IMAGE_ID="%s"\n' "$LL_ID"
 		printf 'IMAGE_VERSION="%s"\n' "$LL_VERSION"
 		printf 'LOGO="linuxlive-logo"\n'
+		# Which build of this version it is (the Containerfile's LL_BUILD_ID
+		# argument; linuxlive's CI passes the date and run number), so two
+		# monthly rebuilds of one version can be told apart.
+		case ${LL_BUILD_ID:-} in
+		'') ;;
+		*[!A-Za-z0-9._-]*) die "LL_BUILD_ID may hold only letters, digits, dots, dashes and underscores" ;;
+		*) printf 'BUILD_ID="%s"\n' "$LL_BUILD_ID" ;;
+		esac
 	} >"$tmp"
 	if [ "$LL_BASE" = ubuntu ]; then
 		# base-files owns this file. Diverting it keeps our copy through upgrades.

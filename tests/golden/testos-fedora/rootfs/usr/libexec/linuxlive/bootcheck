@@ -23,6 +23,7 @@ fact os_name "$NAME"
 fact os_pretty_name "$PRETTY_NAME"
 fact image_id "${IMAGE_ID:-}"
 fact image_version "${IMAGE_VERSION:-}"
+fact build_id "${BUILD_ID:-}"
 fact kernel "$(uname -r)"
 fact cmdline "$(cat /proc/cmdline)"
 # Live from the ISO, or a system the installer put on a disk.

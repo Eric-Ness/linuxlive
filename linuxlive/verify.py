@@ -245,6 +245,10 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
         _fact(result, "image_version") == spec.version,
         f"IMAGE_VERSION is {_fact(result, 'image_version')!r}, expected {spec.version!r}",
     )
+    # CI names each build (build.yml's build_id); a build without one has none to check.
+    build_id = (_load(results / "meta.json") or {}).get("build_id")
+    if build_id:
+        c.expect(_fact(result, "build_id") == build_id, f"BUILD_ID is {_fact(result, 'build_id')!r}, expected this build's {build_id!r}")
     shell = plan.desktop.shell_process
     c.expect(_fact(result, "shell") == shell, f"desktop shell is {_fact(result, 'shell')!r}, expected {shell!r}")
     c.expect(_fact(result, "installer_icon") == "desktop", f"the live desktop shows the installer (installer_icon {_fact(result, 'installer_icon')!r})")

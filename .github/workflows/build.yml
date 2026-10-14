@@ -116,9 +116,14 @@ jobs:
           if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name):
               raise SystemExit(f"name {name!r}: use letters, digits, dots, dashes and underscores")
           pipeline = subprocess.run(["git", "-C", "linuxlive", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+          # Which build of the spec's version this is: the date and the run's number,
+          # as os-release's BUILD_ID, so a monthly rebuild of one version stands apart.
+          import time
+          build_id = f"{time.strftime('%Y.%m.%d', time.gmtime())}.{os.environ['GITHUB_RUN_NUMBER']}"
           meta = {
               "commit": os.environ["GITHUB_SHA"],
               "run_id": os.environ["GITHUB_RUN_ID"],
+              "build_id": build_id,
               "base": spec.base,
               "spec": os.environ["SPEC_INPUT"],
               "linuxlive": {"repository": os.environ["LINUXLIVE_REPOSITORY"], "ref": os.environ["LINUXLIVE_REF"], "commit": pipeline},
@@ -132,6 +137,7 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a") as env:
               env.write(f"NAME={name}\nIMAGE=localhost/linuxlive-{name.lower()}:ci\nISO=build/{name}.iso\nREGISTRY_IMAGE={registry}\n")
               env.write(f"PUBLISH={'1' if 'image' in meta else ''}\n")
+              env.write(f"BUILD_ID={build_id}\n")
           print(f"Building {spec.name} {spec.version} ({spec.base}, {spec.desktop}) as {name}, with linuxlive {pipeline[:12]}")
           PY
           cat "$RESULTS/meta.json"
@@ -175,7 +181,7 @@ jobs:
 
       - name: Build image
         run: |
-          sudo podman build --pull=newer --tag "$IMAGE" \
+          sudo podman build --pull=newer --tag "$IMAGE" --build-arg "LL_BUILD_ID=$BUILD_ID" \
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" build/ctx
 
       - name: Publish the image for this run
