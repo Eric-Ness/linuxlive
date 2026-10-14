@@ -165,10 +165,11 @@ progress 76 "Setting up the system"
 udevadm settle
 root=$(lsblk -bnpo PATH,SIZE,TYPE "$disk" | awk '$3 == "part"' | sort -k2 -n | tail -n 1 | awk '{print $1}')
 mnt=$(mktemp -d /tmp/linuxlive-root.XXXXXX)
-# The new root has come back read-only after bootc ("source write-protected"):
-# clear the read-only flag on the disk and the partition, and if a writable
-# mount still fails, say why.
-blockdev --setrw "$disk" 2>/dev/null || true
+# bootc leaves the new root mounted read-only at /run/bootc/storage, and a
+# second mount of the same xfs shares that read-only mount ("source
+# write-protected"): unmount whatever bootc left first. If a writable mount
+# still fails, say why.
+findmnt -rno TARGET -S "$root" 2>/dev/null | sort -r | while read -r m; do umount "$m" 2>/dev/null || umount -l "$m" 2>/dev/null || true; done
 blockdev --setrw "$root" 2>/dev/null || true
 if ! mount -o rw "$root" "$mnt" 2>/dev/null || ! touch "$mnt/.linuxlive-rw" 2>/dev/null; then
 	mountpoint -q "$mnt" && umount "$mnt"
