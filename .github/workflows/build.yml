@@ -7,7 +7,7 @@
 #       permissions:
 #         contents: read
 #         packages: write
-#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.4.1
+#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.4.2
 #       with:
 #         publish-image: true
 #
@@ -59,7 +59,7 @@ on:
         description: Pipeline version to build with (a tag, branch or commit)
         type: string
         # Changed with each release; tests/test_workflows.py checks it matches pyproject.toml.
-        default: v0.4.1
+        default: v0.4.2
 
 defaults:
   run:
