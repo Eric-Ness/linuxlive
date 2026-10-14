@@ -35,6 +35,10 @@ on:
         description: After all four builds pass, upload the ISOs to downloads.linuxlive.com (R2)
         type: boolean
         default: false
+      only:
+        description: Build just this example (for debugging one; leave empty for all four)
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -104,8 +108,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Each name is a spec in examples/.
-        example: [testos-ubuntu, testos-fedora, lawndarts-ubuntu, lawndarts-fedora]
+        # Each name is a spec in examples/; a hand-run with "only" builds just that one.
+        example: ${{ fromJSON(inputs.only && format('["{0}"]', inputs.only) || '["testos-ubuntu", "testos-fedora", "lawndarts-ubuntu", "lawndarts-fedora"]') }}
     uses: ./.github/workflows/build.yml
     with:
       spec: examples/${{ matrix.example }}.yaml
