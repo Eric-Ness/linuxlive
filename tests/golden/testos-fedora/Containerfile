@@ -23,6 +23,11 @@ RUN set -eux; \
     dnf -y install python3-gobject gtk3; \
     dnf clean all
 
+# The distro's own packages (packages in the spec).
+RUN set -eux; \
+    dnf -y install htop; \
+    dnf clean all
+
 COPY rootfs/ /
 
 # Keep a copy of the signed Secure Boot chain where the ISO assembler looks for it.
@@ -33,6 +38,10 @@ RUN set -eux; \
         test -n "$found" || { echo "missing $name in the base image" >&2; exit 1; }; \
         cp "$found" "/usr/lib/linuxlive/efi/$name"; \
     done
+
+# The distro's own build steps (repos, then scripts.build in the spec), as root.
+COPY extras/ /tmp/linuxlive-extras/
+RUN /bin/sh /usr/libexec/linuxlive/user-build /tmp/linuxlive-extras && rm -rf /tmp/linuxlive-extras
 
 # Branding, linuxlive's boot check and the initramfs.
 RUN /bin/sh /usr/libexec/linuxlive/finalize

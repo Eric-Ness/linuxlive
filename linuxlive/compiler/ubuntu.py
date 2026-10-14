@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from linuxlive.compiler.common import add_grub_configs, add_install_launcher, header_comment
 from linuxlive.compiler.context import BuildContext
+from linuxlive.compiler.extras import build_step, packages_step
 from linuxlive.compiler.plan import Plan
 
 LIVE_USER = "live"
@@ -122,9 +123,9 @@ RUN set -eux; \\
       f"apt-get install -y --download-only -o Dir::Cache::archives={INSTALLER_DEBS} " + " ".join(base.bootloader_packages),
       f"rm -rf {INSTALLER_DEBS}/partial {INSTALLER_DEBS}/lock",
       f"ls {INSTALLER_DEBS}/grub-efi-amd64-signed_*.deb {INSTALLER_DEBS}/shim-signed_*.deb")}
-
+{packages_step(plan)}
 # Branding and linuxlive's boot check.
 COPY --from=efi /out/ /usr/lib/linuxlive/efi/
 COPY rootfs/ /
-RUN /bin/sh /usr/libexec/linuxlive/finalize
+{build_step(plan)}RUN /bin/sh /usr/libexec/linuxlive/finalize
 """

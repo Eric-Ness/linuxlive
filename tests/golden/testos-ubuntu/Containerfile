@@ -64,7 +64,18 @@ RUN set -eux; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
+# The distro's own packages (packages in the spec).
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y htop curl ca-certificates; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
+
 # Branding and linuxlive's boot check.
 COPY --from=efi /out/ /usr/lib/linuxlive/efi/
 COPY rootfs/ /
+
+# The distro's own build steps (repos, then scripts.build in the spec), as root.
+COPY extras/ /tmp/linuxlive-extras/
+RUN /bin/sh /usr/libexec/linuxlive/user-build /tmp/linuxlive-extras && rm -rf /tmp/linuxlive-extras
 RUN /bin/sh /usr/libexec/linuxlive/finalize

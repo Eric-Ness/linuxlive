@@ -1,0 +1,21 @@
+#!/bin/sh
+# Runs a distro's own first-boot scripts (scripts.first-boot in its spec) once,
+# on an installed system, before its first login screen: each file in
+# /usr/lib/linuxlive/first-boot.d in name order, as root. One that fails is
+# logged and the others still run; none runs a second time.
+# linuxlive-first-boot-scripts.service starts this.
+set -u
+
+state=/var/lib/linuxlive
+mkdir -p "$state"
+log=$state/first-boot.log
+: >"$log"
+for script in /usr/lib/linuxlive/first-boot.d/*; do
+	[ -f "$script" ] || continue
+	name=$(basename "$script")
+	printf 'linuxlive-first-boot: running %s\n' "$name"
+	if (cd / && "$script"); then rc=0; else rc=$?; fi
+	printf 'linuxlive-first-boot: %s exited %s\n' "$name" "$rc"
+	printf '%s %s\n' "$name" "$rc" >>"$log"
+done
+touch "$state/first-boot-done"

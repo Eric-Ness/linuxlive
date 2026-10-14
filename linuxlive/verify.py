@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from linuxlive.catalog import Catalog, load_catalog
+from linuxlive.compiler.extras import file_sha256, script_names
 from linuxlive.compiler.plan import LOGO_NAME, Plan, plan_build
 from linuxlive.png import ImageError, dominant_hue, hue_fraction, image_info, read_png
 from linuxlive.spec import Spec
@@ -204,6 +205,29 @@ def _check_live_session(c: _Collector, plan: Plan, result: dict) -> None:
         c.expect(verdict in ("pass", "running"), f"casper's medium check: {verdict!r}, expected 'pass' (or still 'running')")
 
 
+def _check_extras(c: _Collector, plan: Plan, result: dict, where: str, *, installed: bool) -> None:
+    """The spec's own packages, files and scripts (bootcheck's extra_* and *_script facts)."""
+    spec = plan.spec
+    packages = sorted(_facts(result, "extra_package"))
+    for name in spec.packages:
+        c.expect(f"{name}=yes" in packages, f"{where}package {name} is installed (found {packages})")
+    files = set(_facts(result, "extra_file"))
+    for f in spec.files:
+        c.expect(f"{f.dest}={file_sha256(f.src)}" in files, f"{where}{f.dest} holds the spec's {f.src.name}")
+    built = set(_facts(result, "user_build"))
+    for repo in spec.repos:
+        c.expect(f"repo {repo.url} {repo.commit} ok" in built, f"{where}repo {repo.slug} was built in at {repo.commit[:12]}")
+    for name in script_names(spec.scripts.build):
+        c.expect(f"build {name} ok" in built, f"{where}build script {name} ran")
+    logins = sorted(_facts(result, "first_login_script"))
+    for name in script_names(spec.scripts.first_login):
+        c.expect(f"{name}=0" in logins, f"{where}first-login script {name} ran and succeeded (found {logins})")
+    if installed:
+        boots = sorted(_facts(result, "first_boot_script"))
+        for name in script_names(spec.scripts.first_boot):
+            c.expect(f"{name}=0" in boots, f"{where}first-boot script {name} ran and succeeded (found {boots})")
+
+
 def check_session(plan: Plan, results: Path) -> list[Outcome]:
     spec = plan.spec
     c = _Collector("session")
@@ -261,6 +285,7 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
     installed = set(_facts(result, "flatpak"))
     for app in plan.apps:
         c.expect(app.flatpak in installed, f"Flatpak {app.flatpak} ({app.name}) is installed")
+    _check_extras(c, plan, result, "", installed=False)
     if plan.base.id == "fedora":
         c.expect(_fact(result, "selinux") == "Enforcing", f"SELinux is {_fact(result, 'selinux')!r}, expected 'Enforcing'")
     _check_upstream_branding(c, plan, result)
@@ -337,6 +362,7 @@ def check_install(plan: Plan, results: Path) -> list[Outcome]:
         c.expect(_fact(uefi, "installer_icon") != "desktop", f"installed-uefi-sb: no installer on the installed desktop (installer_icon {_fact(uefi, 'installer_icon')!r})")
         apps = sorted(_facts(live, "flatpak"))
         c.expect(sorted(_facts(uefi, "flatpak")) == apps, f"installed-uefi-sb: the live session's apps are installed ({sorted(_facts(uefi, 'flatpak'))} vs {apps})")
+        _check_extras(c, plan, uefi, "installed-uefi-sb: ", installed=True)
     bios = _load(modes / "installed-bios" / "result.json")
     if bios is None:
         c.expect(False, "installed-bios: result.json is missing or not valid JSON")

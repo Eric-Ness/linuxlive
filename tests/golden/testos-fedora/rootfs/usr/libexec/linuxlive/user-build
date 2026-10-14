@@ -1,0 +1,65 @@
+#!/bin/sh
+# Runs a distro's own build steps inside the image build, as root, with the
+# network: first each repo in the spec (fetched from GitHub at its exact
+# commit, then its run command in the checkout), then each build script, in
+# order. The compiler puts them in the directory given (extras/ in the build
+# context). Any failure fails the build.
+#
+# It records what ran for the boot check (user-build.log) and, for the
+# source offer, each repo and commit (repos.txt, added to the ISO's package
+# list by scripts/assemble-iso.sh).
+# shellcheck disable=SC2154 # LL_* settings come from /usr/lib/linuxlive/branding.env
+set -eu
+
+dir=${1:?usage: user-build DIR}
+lib=/usr/lib/linuxlive
+log=$lib/user-build.log
+: >"$log"
+: >"$lib/repos.txt"
+
+# Scripts may read the distro's settings (LL_NAME, LL_ID, LL_BASE, LL_DESKTOP, ...).
+set -a
+# shellcheck source=/dev/null
+. "$lib/branding.env"
+set +a
+
+say() { printf 'linuxlive-user-build: %s\n' "$*"; }
+
+fetch() {
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSL --retry 3 -o "$2" "$1"
+	else
+		python3 -c 'import shutil, sys, urllib.request
+with urllib.request.urlopen(sys.argv[1]) as r, open(sys.argv[2], "wb") as f:
+    shutil.copyfileobj(r, f)' "$1" "$2"
+	fi
+}
+
+work=$(mktemp -d)
+for repo in "$dir"/repos/*.repo; do
+	[ -f "$repo" ] || continue
+	url=$(sed -n 1p "$repo")
+	commit=$(sed -n 2p "$repo")
+	run=${repo%.repo}.run
+	slug=${url#https://github.com/}
+	say "fetching $slug at $commit"
+	src=$work/$(basename "${repo%.repo}")
+	mkdir -p "$src"
+	fetch "https://codeload.github.com/$slug/tar.gz/$commit" "$src.tar.gz"
+	tar -xzf "$src.tar.gz" -C "$src" --strip-components=1
+	say "running the build command for $slug"
+	(cd "$src" && /bin/sh -eu "$run")
+	printf 'repo %s %s ok\n' "$url" "$commit" >>"$log"
+	printf '%s %s\n' "$url" "$commit" >>"$lib/repos.txt"
+done
+rm -rf "$work"
+
+for script in "$dir"/build/*; do
+	[ -f "$script" ] || continue
+	name=$(basename "$script")
+	say "running $name"
+	(cd "$dir/build" && "$script")
+	printf 'build %s ok\n' "$name" >>"$log"
+done
+[ -s "$lib/repos.txt" ] || rm -f "$lib/repos.txt"
+say "done"

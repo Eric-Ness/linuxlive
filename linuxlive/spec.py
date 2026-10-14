@@ -13,7 +13,7 @@ import json
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import jsonschema
 import yaml
@@ -24,6 +24,16 @@ from linuxlive.png import ImageError, image_info
 MIN_WALLPAPER = (1280, 720)
 LOGO_SIZES = (128, 256, 512)
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9-]{1,29}$")
+MAX_FILES_BYTES = 20 << 20
+MAX_SCRIPT_BYTES = 256 << 10
+# Where linuxlive keeps its own files; a spec's files can't replace them.
+RESERVED_DESTS = (
+    "/etc/linuxlive",
+    "/usr/lib/linuxlive",
+    "/usr/libexec/linuxlive",
+    "/usr/lib/os-release",
+    "/etc/os-release",
+)
 
 
 class SpecError(ValueError):
@@ -43,6 +53,32 @@ class Branding:
 
 
 @dataclass(frozen=True)
+class ExtraFile:
+    src: Path
+    dest: str
+    mode: int
+
+
+@dataclass(frozen=True)
+class Repo:
+    url: str
+    commit: str
+    run: str
+
+    @property
+    def slug(self) -> str:
+        """owner/name"""
+        return self.url.removeprefix("https://github.com/")
+
+
+@dataclass(frozen=True)
+class Scripts:
+    build: tuple[Path, ...] = ()
+    first_boot: tuple[Path, ...] = ()
+    first_login: tuple[Path, ...] = ()
+
+
+@dataclass(frozen=True)
 class Spec:
     path: Path
     name: str
@@ -52,6 +88,17 @@ class Spec:
     desktop: str
     apps: tuple[str, ...]
     branding: Branding
+    # A distro's own additions: distribution packages, files, scripts and GitHub code.
+    packages: tuple[str, ...] = ()
+    files: tuple[ExtraFile, ...] = ()
+    scripts: Scripts = Scripts()
+    repos: tuple[Repo, ...] = ()
+
+    @property
+    def runs_own_code(self) -> bool:
+        """The spec brings code of its own: scripts or repos (not just packages and files)."""
+        s = self.scripts
+        return bool(s.build or s.first_boot or s.first_login or self.repos)
 
 
 @lru_cache(maxsize=1)
@@ -112,6 +159,23 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
     problems += _check_wallpaper(wallpaper, branding["wallpaper"])
     problems += _check_logo(logo, branding["logo"])
 
+    folder = path.parent.resolve()
+    files, file_problems = _resolve_files(folder, base, raw.get("files") or [])
+    problems += file_problems
+    scripts_raw = raw.get("scripts") or {}
+    script_lists = {}
+    for key in ("build", "first-boot", "first-login"):
+        resolved, script_problems = _resolve_scripts(folder, key, scripts_raw.get(key) or [])
+        script_lists[key] = resolved
+        problems += script_problems
+    repos = tuple(Repo(url=r["url"], commit=r["commit"], run=r["run"]) for r in raw.get("repos") or [])
+    seen_repos = set()
+    for repo in repos:
+        key = (repo.url.lower(), repo.commit)
+        if key in seen_repos:
+            problems.append(f"repos: {repo.url} at {repo.commit} is listed twice")
+        seen_repos.add(key)
+
     if problems:
         raise SpecError(path, problems)
     accent = branding.get("accent_color")
@@ -124,7 +188,82 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
         desktop=desktop,
         apps=apps,
         branding=Branding(wallpaper=wallpaper, logo=logo, accent_color=accent.lower() if accent else None),
+        packages=tuple(raw.get("packages") or ()),
+        files=files,
+        scripts=Scripts(
+            build=script_lists["build"],
+            first_boot=script_lists["first-boot"],
+            first_login=script_lists["first-login"],
+        ),
+        repos=repos,
     )
+
+
+def _inside(folder: Path, given: str) -> Path | None:
+    """The file a spec names, if it is inside the spec's folder."""
+    candidate = (folder / given).resolve()
+    return candidate if candidate.is_relative_to(folder) else None
+
+
+def _resolve_files(folder: Path, base: str, entries: list[dict]) -> tuple[tuple[ExtraFile, ...], list[str]]:
+    problems: list[str] = []
+    files: list[ExtraFile] = []
+    dests: set[str] = set()
+    total = 0
+    for i, entry in enumerate(entries):
+        where = f"files/{i}"
+        dest = entry["dest"]
+        parts = PurePosixPath(dest).parts
+        if dest.endswith("/") or "//" in dest or any(p in (".", "..") for p in dest.split("/")):
+            problems.append(f"{where}/dest: {dest!r} must be a plain path to a file")
+        elif any(dest == r or dest.startswith(r + "/") for r in RESERVED_DESTS):
+            problems.append(f"{where}/dest: {dest!r} is where linuxlive keeps its own files")
+        elif base == "fedora" and len(parts) > 2 and parts[1:3] == ("usr", "local"):
+            # On Fedora Atomic /usr/local is a link into /var, which an image cannot fill.
+            problems.append(f"{where}/dest: {dest!r} is not part of a Fedora Atomic image; use /usr or /etc")
+        if dest in dests:
+            problems.append(f"{where}/dest: {dest!r} is used twice")
+        dests.add(dest)
+        src = _inside(folder, entry["src"])
+        if src is None:
+            problems.append(f"{where}/src: {entry['src']!r} must be inside the spec's folder")
+            continue
+        if not src.is_file():
+            problems.append(f"{where}/src: file {entry['src']!r} not found")
+            continue
+        total += src.stat().st_size
+        files.append(ExtraFile(src=src, dest=dest, mode=int(entry.get("mode", "0644"), 8)))
+    if total > MAX_FILES_BYTES:
+        problems.append(f"files: {total / (1 << 20):.1f} MB in all; the limit is {MAX_FILES_BYTES >> 20} MB")
+    return tuple(files), problems
+
+
+def _resolve_scripts(folder: Path, key: str, entries: list[str]) -> tuple[tuple[Path, ...], list[str]]:
+    problems: list[str] = []
+    scripts: list[Path] = []
+    for i, given in enumerate(entries):
+        where = f"scripts/{key}/{i}"
+        src = _inside(folder, given)
+        if src is None:
+            problems.append(f"{where}: {given!r} must be inside the spec's folder")
+            continue
+        if not src.is_file():
+            problems.append(f"{where}: file {given!r} not found")
+            continue
+        data = src.read_bytes()
+        if len(data) > MAX_SCRIPT_BYTES:
+            problems.append(f"{where}: {given!r} is {len(data)} bytes; a script can be at most {MAX_SCRIPT_BYTES >> 10} KB")
+            continue
+        if b"\0" in data:
+            problems.append(f"{where}: {given!r} is not a text file")
+            continue
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            problems.append(f"{where}: {given!r} is not a text file (UTF-8)")
+            continue
+        scripts.append(src)
+    return tuple(scripts), problems
 
 
 def _check_wallpaper(path: Path, given: str) -> list[str]:

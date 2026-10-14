@@ -77,7 +77,11 @@ jobs:
             linuxlive/data/rootfs/fedora/usr/libexec/linuxlive/install-to-disk \
             linuxlive/data/rootfs/fedora/usr/libexec/linuxlive/firstboot \
             linuxlive/data/rootfs/common/usr/libexec/linuxlive/autoinstall \
-            linuxlive/data/rootfs/common/usr/libexec/linuxlive/install-on-boot
+            linuxlive/data/rootfs/common/usr/libexec/linuxlive/install-on-boot \
+            linuxlive/data/rootfs/common/usr/libexec/linuxlive/user-build \
+            linuxlive/data/rootfs/common/usr/libexec/linuxlive/first-boot-scripts \
+            linuxlive/data/rootfs/common/usr/libexec/linuxlive/first-login-scripts \
+            examples/assets/extras/*.sh
       - name: Compile examples
         run: |
           compiled=()

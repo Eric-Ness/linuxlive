@@ -12,3 +12,20 @@ branding:
   wallpaper: assets/wallpaper.png
   logo: assets/logo.png
   accent_color: "#c2185b"
+# The distro's own additions. CI builds and checks each of them.
+packages:
+  - htop
+files:
+  - src: assets/extras/motd
+    dest: /etc/motd
+scripts:
+  build:
+    - assets/extras/build.sh
+  first-boot:
+    - assets/extras/first-boot.sh
+  first-login:
+    - assets/extras/first-login.sh
+repos:
+  - url: https://github.com/Eric-Ness/linuxlive
+    commit: 7de84ed49850a29bc2fce32d66d0d83509b99daf
+    run: install -Dm644 LICENSE /usr/share/doc/linuxlive-example/LICENSE

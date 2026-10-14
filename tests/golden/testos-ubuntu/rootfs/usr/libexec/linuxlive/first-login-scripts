@@ -1,0 +1,21 @@
+#!/bin/sh
+# Runs a distro's own first-login scripts (scripts.first-login in its spec)
+# once for the user logging in, as that user: each file in
+# /usr/lib/linuxlive/first-login.d in name order. One that fails is logged and
+# the others still run. The live session's home is new at every start, so
+# there they run at every start. Started from
+# /etc/xdg/autostart/linuxlive-first-login.desktop.
+set -u
+
+state=${XDG_STATE_HOME:-$HOME/.local/state}/linuxlive
+[ -e "$state/first-login-done" ] && exit 0
+mkdir -p "$state"
+log=$state/first-login.log
+: >"$log"
+for script in /usr/lib/linuxlive/first-login.d/*; do
+	[ -f "$script" ] || continue
+	name=$(basename "$script")
+	if (cd "$HOME" && "$script"); then rc=0; else rc=$?; fi
+	printf '%s %s\n' "$name" "$rc" >>"$log"
+done
+touch "$state/first-login-done"

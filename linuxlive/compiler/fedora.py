@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from linuxlive.compiler.common import add_grub_configs, add_install_launcher, header_comment
 from linuxlive.compiler.context import BuildContext
+from linuxlive.compiler.extras import build_step, packages_step
 from linuxlive.compiler.plan import Plan
 
 
@@ -61,7 +62,7 @@ FROM {plan.base_image}
 RUN set -eux; \\
     dnf -y install {packages}; \\
     dnf clean all
-{desktop}{debrand}{installer}
+{desktop}{debrand}{installer}{packages_step(plan)}
 COPY rootfs/ /
 
 # Keep a copy of the signed Secure Boot chain where the ISO assembler looks for it.
@@ -72,7 +73,7 @@ RUN set -eux; \\
         test -n "$found" || {{ echo "missing $name in the base image" >&2; exit 1; }}; \\
         cp "$found" "/usr/lib/linuxlive/efi/$name"; \\
     done
-
+{build_step(plan)}
 # Branding, linuxlive's boot check and the initramfs.
 RUN /bin/sh /usr/libexec/linuxlive/finalize
 
