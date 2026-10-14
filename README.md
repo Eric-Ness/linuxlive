@@ -208,11 +208,20 @@ Cinnamon on both:
   boots the installed disks to the desktop under UEFI with Secure Boot and
   under BIOS, checking that casper and the live user are gone, the user and
   the apps are there, and no upstream first-login wizard opens.
+- Since v0.3.0 Fedora-based ISOs install too, with the same icon, boot entry
+  and installer. With `publish-image: true` (and `packages: write`) the build
+  pushes its bootc image to ghcr.io, tagged `:latest` once verified; the
+  installer runs `bootc install to-disk` from it, so installing needs the
+  internet, and installed systems follow `:latest` with `bootc upgrade`. A
+  first-boot service creates the user before the login screen starts. CI
+  installs the Fedora examples the same way and checks the installed system
+  runs the published image from xfs.
 
 What it did not prove, or found broken:
 
-- The installer only erases a whole disk: no dual boot, no encryption, and
-  Fedora-based ISOs have no installer yet (they would need `bootc install`).
+- The installer only erases a whole disk: no dual boot, no encryption.
+  Fedora-based ISOs install only while online, and only when their image was
+  published; without it the installer says it cannot install this build.
   It has been tested in QEMU, not yet on real hardware.
 - Three of the seven green Fedora KDE runs up to 2026-10-11 logged one
   SELinux denial: systemd reading a uevent socket that was opened before the

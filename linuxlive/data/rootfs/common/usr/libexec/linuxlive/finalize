@@ -164,17 +164,20 @@ brand_kde() {
 			"$INI" "$sddm_theme/theme.conf.user" General background "$LL_WALLPAPER"
 		fi
 	done
+	# KDE's Welcome Center opens at the first login with "Welcome to Fedora!"
+	# and Fedora's logo (Fedora's trademarks); a distro of its own goes without.
+	rm -f /etc/xdg/autostart/org.kde.plasma-welcome.desktop
 	log "KDE lock screen, login screen and accent configured"
 }
 
 enable_services() {
 	systemctl enable linuxlive-bootcheck.service linuxlive-live.service
-	if [ "$LL_BASE" = ubuntu ]; then
-		# Inert unless QEMU passes opt/linuxlive/autoinstall (the installer test).
-		systemctl enable linuxlive-autoinstall.service
-	fi
+	# Inert unless QEMU passes opt/linuxlive/autoinstall (the installer test).
+	systemctl enable linuxlive-autoinstall.service
 	if [ "$LL_BASE" = fedora ]; then
 		systemctl enable livesys.service livesys-late.service
+		# Creates the installed system's user at its first start (install-to-disk).
+		systemctl enable linuxlive-firstboot.service
 	fi
 }
 

@@ -135,6 +135,7 @@ while [ $# -gt 0 ]; do
 	--timezone) timezone=$2; shift 2 ;;
 	--autologin) autologin=1; shift ;;
 	--confirm) confirm=$2; shift 2 ;;
+	--image) shift 2 ;; # Fedora's installer only (the image to install)
 	*) die "unknown option $1" ;;
 	esac
 done

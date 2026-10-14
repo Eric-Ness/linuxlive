@@ -35,6 +35,10 @@ on:
         description: After all four builds pass, upload the ISOs to downloads.linuxlive.com (R2)
         type: boolean
         default: false
+      only:
+        description: Build just this example (for debugging one; leave empty for all four)
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -70,8 +74,10 @@ jobs:
             linuxlive/data/rootfs/common/usr/libexec/linuxlive/live-setup \
             linuxlive/data/rootfs/kde/usr/libexec/linuxlive/kde-apply-branding \
             linuxlive/data/rootfs/ubuntu/usr/libexec/linuxlive/install-to-disk \
-            linuxlive/data/rootfs/ubuntu/usr/libexec/linuxlive/autoinstall \
-            linuxlive/data/rootfs/ubuntu/usr/libexec/linuxlive/install-on-boot
+            linuxlive/data/rootfs/fedora/usr/libexec/linuxlive/install-to-disk \
+            linuxlive/data/rootfs/fedora/usr/libexec/linuxlive/firstboot \
+            linuxlive/data/rootfs/common/usr/libexec/linuxlive/autoinstall \
+            linuxlive/data/rootfs/common/usr/libexec/linuxlive/install-on-boot
       - name: Compile examples
         run: |
           compiled=()
@@ -95,16 +101,21 @@ jobs:
   build:
     name: build (${{ matrix.example }})
     needs: unit
+    # The Fedora examples publish their bootc image (installable ISOs).
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
-        # Each name is a spec in examples/.
-        example: [testos-ubuntu, testos-fedora, lawndarts-ubuntu, lawndarts-fedora]
+        # Each name is a spec in examples/; a hand-run with "only" builds just that one.
+        example: ${{ fromJSON(inputs.only && format('["{0}"]', inputs.only) || '["testos-ubuntu", "testos-fedora", "lawndarts-ubuntu", "lawndarts-fedora"]') }}
     uses: ./.github/workflows/build.yml
     with:
       spec: examples/${{ matrix.example }}.yaml
       name: ${{ matrix.example }}
       keep-iso: ${{ inputs.keep_iso == true || inputs.publish == true || github.event_name == 'schedule' }}
+      publish-image: true
       iso-retention-days: 1
       # Build with the pipeline at this commit, not the release build.yml defaults to.
       linuxlive-repository: ${{ github.repository }}

@@ -223,8 +223,8 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
     )
     shell = plan.desktop.shell_process
     c.expect(_fact(result, "shell") == shell, f"desktop shell is {_fact(result, 'shell')!r}, expected {shell!r}")
-    if plan.base.id == "ubuntu":
-        c.expect(_fact(result, "installer_icon") == "desktop", f"the live desktop shows the installer (installer_icon {_fact(result, 'installer_icon')!r})")
+    c.expect(_fact(result, "installer_icon") == "desktop", f"the live desktop shows the installer (installer_icon {_fact(result, 'installer_icon')!r})")
+    c.expect(_fact(result, "first_login_wizard") == "none", f"no upstream welcome wizard opens in the live session (running: {_fact(result, 'first_login_wizard')!r})")
     after = _fact(result, "shell_after_settle")
     errors = _facts(result, "session_error")
     c.expect(
@@ -294,10 +294,14 @@ TEST_USER = "tester"  # what scripts/boottest.py's unattended install creates
 
 
 def check_install(plan: Plan, results: Path) -> list[Outcome]:
-    """The installer (Ubuntu bases): the unattended install onto a blank disk,
-    then that disk booted alone under UEFI with Secure Boot and under BIOS."""
+    """The installer: the unattended install onto a blank disk, then that disk
+    booted alone under UEFI with Secure Boot and under BIOS. Fedora installs
+    from the image the build published (meta.json's image), so a Fedora build
+    that published none has no install to check."""
     c = _Collector("install")
-    if plan.base.id != "ubuntu":
+    fedora = plan.base.id == "fedora"
+    image = (_load(results / "meta.json") or {}).get("image")
+    if fedora and not image:
         return c.outcomes
     modes = results / "modes"
     install = _load(modes / "install" / "result.json")
@@ -316,12 +320,21 @@ def check_install(plan: Plan, results: Path) -> list[Outcome]:
         c.expect(uefi.get("outcome") == "session", f"installed-uefi-sb: the installed disk boots to the desktop (outcome {uefi.get('outcome')!r})")
         c.expect(_fact(uefi, "boot_medium") == "disk", f"installed-uefi-sb: started from the disk, not the ISO (boot_medium {_fact(uefi, 'boot_medium')!r})")
         c.expect(_fact(uefi, "secureboot") == "1", f"installed-uefi-sb: Secure Boot on (guest reports {_fact(uefi, 'secureboot')!r})")
-        c.expect(_fact(uefi, "root_fstype") == "ext4", f"installed-uefi-sb: root file system is {_fact(uefi, 'root_fstype')!r}, expected 'ext4'")
-        c.expect(_fact(uefi, "casper_installed") == "no", f"installed-uefi-sb: casper removed (casper_installed {_fact(uefi, 'casper_installed')!r})")
+        if fedora:
+            # composefs: an overlay at /, on the xfs bootc made at /sysroot.
+            c.expect(_fact(uefi, "root_fstype") == "overlay" and _fact(uefi, "sysroot_fstype") == "xfs",
+                     f"installed-uefi-sb: composefs root on xfs (/ is {_fact(uefi, 'root_fstype')!r}, /sysroot is {_fact(uefi, 'sysroot_fstype')!r})")
+        else:
+            c.expect(_fact(uefi, "root_fstype") == "ext4", f"installed-uefi-sb: root file system is {_fact(uefi, 'root_fstype')!r}, expected 'ext4'")
+        if fedora:
+            c.expect(_fact(uefi, "bootc_image") == image, f"installed-uefi-sb: a bootc system updating from {image!r} (bootc status: {_fact(uefi, 'bootc_image')!r})")
+        else:
+            c.expect(_fact(uefi, "casper_installed") == "no", f"installed-uefi-sb: casper removed (casper_installed {_fact(uefi, 'casper_installed')!r})")
         c.expect(_fact(uefi, "login_users") == TEST_USER, f"installed-uefi-sb: the only login user is {TEST_USER!r} (found {_fact(uefi, 'login_users')!r})")
         c.expect(_fact(uefi, "session_user") == TEST_USER, f"installed-uefi-sb: logged in as {TEST_USER!r} (session user {_fact(uefi, 'session_user')!r})")
         c.expect(_fact(uefi, "os_name") == plan.spec.name, f"installed-uefi-sb: os-release NAME is {_fact(uefi, 'os_name')!r}")
         c.expect(_fact(uefi, "first_login_wizard") == "none", f"installed-uefi-sb: no first-login welcome wizard opens (running: {_fact(uefi, 'first_login_wizard')!r})")
+        c.expect(_fact(uefi, "installer_icon") != "desktop", f"installed-uefi-sb: no installer on the installed desktop (installer_icon {_fact(uefi, 'installer_icon')!r})")
         apps = sorted(_facts(live, "flatpak"))
         c.expect(sorted(_facts(uefi, "flatpak")) == apps, f"installed-uefi-sb: the live session's apps are installed ({sorted(_facts(uefi, 'flatpak'))} vs {apps})")
     bios = _load(modes / "installed-bios" / "result.json")

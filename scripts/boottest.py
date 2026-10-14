@@ -72,7 +72,8 @@ def kvm_usable() -> bool:
     return os.path.exists("/dev/kvm") and os.access("/dev/kvm", os.R_OK | os.W_OK)
 
 
-def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, memory: int, cpus: int, kvm: bool, disk: Path | None = None) -> list[str]:
+def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, memory: int, cpus: int, kvm: bool,
+                 disk: Path | None = None, autoinstall_image: str = "") -> list[str]:
     firmware, media = MODES[mode]
     machine = "q35,smm=on" if firmware == "uefi-sb" else "q35"
     cmd = [
@@ -109,7 +110,11 @@ def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, m
             "-device", f"virtio-blk-pci,drive=hd,bootindex={1 if media == 'usb+disk' else 0}",
         ]
     if mode == "install":
-        cmd += ["-fw_cfg", f"name=opt/linuxlive/autoinstall,string={AUTOINSTALL}"]
+        # Fedora installs from a registry image: the run's own, given here.
+        settings = AUTOINSTALL + (f";image={autoinstall_image}" if autoinstall_image else "")
+        if "," in settings:
+            raise SystemExit("autoinstall settings may not contain commas (QEMU's -fw_cfg string)")
+        cmd += ["-fw_cfg", f"name=opt/linuxlive/autoinstall,string={settings}"]
     if media == "disk":
         return cmd
     if media == "cd":
@@ -230,7 +235,7 @@ def run(args) -> int:
     session_timeout = args.session_timeout * scale
     settle = args.settle * scale
     cmd = qemu_command(Path(args.iso).resolve(), args.mode, workdir, serial, qmp_path, args.memory, args.cpus, kvm,
-                       Path(args.disk).resolve() if args.disk else None)
+                       Path(args.disk).resolve() if args.disk else None, args.autoinstall_image or "")
     print(f"[boottest] {args.mode}: {'KVM' if kvm else 'TCG (no KVM)'}; boot timeout {boot_timeout}s", flush=True)
     print("[boottest] " + " ".join(cmd), flush=True)
 
@@ -353,6 +358,7 @@ def main() -> int:
     parser.add_argument("--tcg-factor", type=int, default=5, help="multiply timeouts by this without KVM")
     parser.add_argument("--disk", help="qcow2 disk for the install and installed-* modes")
     parser.add_argument("--install-timeout", type=int, default=1800, help="seconds from the install's start to its end (KVM)")
+    parser.add_argument("--autoinstall-image", help="registry image the unattended install installs from (Fedora)")
     return run(parser.parse_args())
 
 

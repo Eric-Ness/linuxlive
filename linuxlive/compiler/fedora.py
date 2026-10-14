@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from linuxlive.compiler.common import add_grub_configs, header_comment
+from linuxlive.compiler.common import add_grub_configs, add_install_launcher, header_comment
 from linuxlive.compiler.context import BuildContext
 from linuxlive.compiler.plan import Plan
 
@@ -15,7 +15,8 @@ def add_base(ctx: BuildContext, plan: Plan) -> None:
         + "# Session type for livesys, which sets up the live user when booted from the ISO.\n"
         + f'livesys_session="{session}"\n',
     )
-    add_grub_configs(ctx, plan, kernel="/live/vmlinuz", initrd="/live/initrd.img")
+    add_install_launcher(ctx, plan)
+    add_grub_configs(ctx, plan, kernel="/live/vmlinuz", initrd="/live/initrd.img", install=True)
     ctx.add_text("Containerfile", containerfile(plan))
 
 
@@ -42,6 +43,15 @@ RUN set -eux; \\
 RUN set -eux; \\
 {swaps}    dnf clean all
 """
+    installer = ""
+    if plan.base.installer_packages:
+        installer = f"""
+# The installer's window (usr/libexec/linuxlive/installer); the install
+# itself is bootc's, from the published image (install-to-disk).
+RUN set -eux; \\
+    dnf -y install {' '.join(plan.base.installer_packages)}; \\
+    dnf clean all
+"""
     return f"""{header_comment(plan)}
 # {plan.desktop.label} on Fedora Atomic. This is a bootc image: installed
 # systems take updates by pulling new builds of it.
@@ -51,7 +61,7 @@ FROM {plan.base_image}
 RUN set -eux; \\
     dnf -y install {packages}; \\
     dnf clean all
-{desktop}{debrand}
+{desktop}{debrand}{installer}
 COPY rootfs/ /
 
 # Keep a copy of the signed Secure Boot chain where the ISO assembler looks for it.

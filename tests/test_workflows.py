@@ -18,6 +18,18 @@ def load_workflow(name: str) -> dict:
     return data
 
 
+def spike_examples(spike: dict) -> list:
+    """The examples spike builds: its matrix is an expression ("only" narrows
+    a hand-run to one example) whose fallback is the full JSON list."""
+    import json
+
+    matrix = spike["jobs"]["build"]["strategy"]["matrix"]["example"]
+    if isinstance(matrix, list):
+        return matrix
+    start = matrix.rindex("'[")
+    return json.loads(matrix[start + 1 : matrix.index("]'", start) + 1])
+
+
 def test_build_workflow_defaults_to_this_release():
     """Callers pin build.yml to a tag and get the pipeline from that same tag."""
     version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
@@ -32,7 +44,7 @@ def test_spike_builds_examples_through_the_reusable_workflow_at_its_own_commit()
     assert build["uses"] == "./.github/workflows/build.yml"
     assert build["with"]["linuxlive-ref"] == "${{ github.sha }}"
     assert build["with"]["linuxlive-repository"] == "${{ github.repository }}"
-    matrix = build["strategy"]["matrix"]["example"]
+    matrix = spike_examples(load_workflow("spike.yml"))
     assert matrix, "spike builds no examples"
     for name in matrix:
         assert (ROOT / "examples" / f"{name}.yaml").is_file(), f"matrix entry {name} has no spec in examples/"
@@ -43,7 +55,7 @@ def test_spike_publishes_every_example_only_after_all_builds_pass():
     publish = spike["jobs"]["publish"]
     assert publish["needs"] == "build"
     assert publish["if"] == "inputs.publish == true || github.event_name == 'schedule'"
-    assert publish["strategy"]["matrix"]["example"] == spike["jobs"]["build"]["strategy"]["matrix"]["example"]
+    assert publish["strategy"]["matrix"]["example"] == spike_examples(spike)
     # Publishing needs the ISO artifacts.
     assert "inputs.publish == true" in spike["jobs"]["build"]["with"]["keep-iso"]
     assert "github.event_name == 'schedule'" in spike["jobs"]["build"]["with"]["keep-iso"]

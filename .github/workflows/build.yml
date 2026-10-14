@@ -4,7 +4,16 @@
 #
 #   jobs:
 #     build:
-#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.2.0
+#       permissions:
+#         contents: read
+#         packages: write
+#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.3.0
+#       with:
+#         publish-image: true
+#
+# Fedora-based ISOs install by pulling their bootc image from ghcr.io, so they
+# are installable only when the caller publishes it (publish-image with
+# packages: write). Ubuntu-based ISOs install from the ISO and ignore both.
 #
 # The calling repository holds the spec and its art. The pipeline itself is
 # checked out from linuxlive-repository at linuxlive-ref, which defaults to the
@@ -31,6 +40,13 @@ on:
         description: Upload the ISO as an artifact
         type: boolean
         default: true
+      publish-image:
+        description: >-
+          Fedora bases: publish the bootc image to ghcr.io (the caller grants
+          packages: write), which makes the ISO installable and lets installed
+          systems update. Tagged run-<id>, and :latest once the build is verified.
+        type: boolean
+        default: false
       iso-retention-days:
         description: Days to keep the ISO artifact
         type: number
@@ -43,7 +59,7 @@ on:
         description: Pipeline version to build with (a tag, branch or commit)
         type: string
         # Changed with each release; tests/test_workflows.py checks it matches pyproject.toml.
-        default: v0.2.0
+        default: v0.3.0
 
 defaults:
   run:
@@ -53,8 +69,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 340
-    permissions:
-      contents: read
+    # No permissions of its own: it has the caller's (contents: read, and
+    # packages: write when it publishes the image).
     env:
       # The pipeline runs from its checkout; the spec comes from the caller's.
       PYTHONPATH: ${{ github.workspace }}/linuxlive
@@ -84,6 +100,7 @@ jobs:
         env:
           NAME_INPUT: ${{ inputs.name }}
           SPEC_INPUT: ${{ inputs.spec }}
+          PUBLISH_IMAGE: ${{ inputs.publish-image }}
           LINUXLIVE_REPOSITORY: ${{ inputs.linuxlive-repository }}
           LINUXLIVE_REF: ${{ inputs.linuxlive-ref }}
         run: |
@@ -106,10 +123,15 @@ jobs:
               "spec": os.environ["SPEC_INPUT"],
               "linuxlive": {"repository": os.environ["LINUXLIVE_REPOSITORY"], "ref": os.environ["LINUXLIVE_REF"], "commit": pipeline},
           }
+          # Fedora's installed systems update from this image (publish-image).
+          registry = f"ghcr.io/{os.environ['GITHUB_REPOSITORY'].lower()}/{name.lower()}"
+          if os.environ["PUBLISH_IMAGE"] == "true" and spec.base == "fedora":
+              meta["image"] = f"{registry}:latest"
           with open(os.path.join(os.environ["RESULTS"], "meta.json"), "w") as f:
               json.dump(meta, f, indent=2)
           with open(os.environ["GITHUB_ENV"], "a") as env:
-              env.write(f"NAME={name}\nIMAGE=localhost/linuxlive-{name.lower()}:ci\nISO=build/{name}.iso\n")
+              env.write(f"NAME={name}\nIMAGE=localhost/linuxlive-{name.lower()}:ci\nISO=build/{name}.iso\nREGISTRY_IMAGE={registry}\n")
+              env.write(f"PUBLISH={'1' if 'image' in meta else ''}\n")
           print(f"Building {spec.name} {spec.version} ({spec.base}, {spec.desktop}) as {name}, with linuxlive {pipeline[:12]}")
           PY
           cat "$RESULTS/meta.json"
@@ -126,7 +148,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils ovmf squashfs-tools xorriso grub-pc-bin grub-common mtools dosfstools
+            qemu-system-x86 qemu-utils ovmf squashfs-tools xorriso grub-pc-bin grub-common mtools dosfstools skopeo
           podman --version
           qemu-system-x86_64 --version | head -n 1
           nproc; free -g
@@ -144,10 +166,26 @@ jobs:
           fi
 
       - name: Compile spec
-        run: python -m linuxlive compile "$SPEC" -o build/ctx
+        run: |
+          python -m linuxlive compile "$SPEC" -o build/ctx
+          if [ -n "$PUBLISH" ]; then
+            # Where the installer installs from and installed systems update from.
+            printf 'LL_IMAGE_REF=%s:latest\n' "$REGISTRY_IMAGE" > build/ctx/rootfs/usr/lib/linuxlive/image.env
+          fi
 
       - name: Build image
-        run: sudo podman build --pull=newer --tag "$IMAGE" build/ctx
+        run: |
+          sudo podman build --pull=newer --tag "$IMAGE" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" build/ctx
+
+      - name: Publish the image for this run
+        if: env.PUBLISH != ''
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          # Before the ISO is made, which deletes the local image to save disk.
+          sudo podman push --creds "$GITHUB_ACTOR:$TOKEN" "$IMAGE" "docker://$REGISTRY_IMAGE:run-$GITHUB_RUN_ID"
+          echo "Image: $REGISTRY_IMAGE:run-$GITHUB_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Assemble ISO
         run: |
@@ -173,16 +211,23 @@ jobs:
             echo "::error::The first boot never reached userspace; skipped the other boot modes"
           fi
 
-      - name: Install test (Ubuntu)
+      - name: Install test
         run: |
-          # The installer exists on Ubuntu bases only (casper layout) for now.
-          grep -q '^LL_LIVE_LAYOUT=casper' build/ctx/iso.env || exit 0
+          # Fedora (liveos) installs from the published image, so only when there is one.
+          extra=()
+          if ! grep -q '^LL_LIVE_LAYOUT=casper' build/ctx/iso.env; then
+            if [ -z "$PUBLISH" ]; then
+              echo "No image published (publish-image is off); skipped the install test" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            extra=(--autoinstall-image "$REGISTRY_IMAGE:run-$GITHUB_RUN_ID")
+          fi
           if ! grep -q LINUXLIVE_SESSION_READY "$RESULTS/modes/uefi-usb/serial.log" 2>/dev/null; then
             echo "::error::The live session never came up; skipped the install test"
             exit 0
           fi
           qemu-img create -f qcow2 build/disk.qcow2 20G
-          python linuxlive/scripts/boottest.py --iso "$ISO" --mode install --disk build/disk.qcow2 --out "$RESULTS/modes/install" || true
+          python linuxlive/scripts/boottest.py --iso "$ISO" --mode install --disk build/disk.qcow2 "${extra[@]}" --out "$RESULTS/modes/install" || true
           if grep -q LINUXLIVE_INSTALLED "$RESULTS/modes/install/serial.log" 2>/dev/null; then
             python linuxlive/scripts/boottest.py --iso "$ISO" --mode installed-uefi-sb --disk build/disk.qcow2 --session --out "$RESULTS/modes/installed-uefi-sb" || true
             python linuxlive/scripts/boottest.py --iso "$ISO" --mode installed-bios --disk build/disk.qcow2 --out "$RESULTS/modes/installed-bios" || true
@@ -191,6 +236,16 @@ jobs:
 
       - name: Verify
         run: python -m linuxlive verify-results --spec "$SPEC" --results "$RESULTS" --expect-commit "$GITHUB_SHA" | tee build/verify.txt
+
+      - name: Publish the image as latest
+        # Only a verified build: installed systems update to :latest.
+        if: success() && env.PUBLISH != ''
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          skopeo copy --all --src-creds "$GITHUB_ACTOR:$TOKEN" --dest-creds "$GITHUB_ACTOR:$TOKEN" \
+            "docker://$REGISTRY_IMAGE:run-$GITHUB_RUN_ID" "docker://$REGISTRY_IMAGE:latest"
+          echo "Installed systems now update to $REGISTRY_IMAGE:latest (run $GITHUB_RUN_ID)." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summary
         if: always()
