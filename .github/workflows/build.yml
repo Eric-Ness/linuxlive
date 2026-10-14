@@ -232,7 +232,9 @@ jobs:
             echo "::error::The live session never came up; skipped the install test"
             exit 0
           fi
-          qemu-img create -f qcow2 build/disk.qcow2 20G
+          # Big enough for large distros (a GIS workstation needs over 20 GB);
+          # qcow2 only takes the space the install writes.
+          qemu-img create -f qcow2 build/disk.qcow2 64G
           python linuxlive/scripts/boottest.py --iso "$ISO" --mode install --disk build/disk.qcow2 "${extra[@]}" --out "$RESULTS/modes/install" || true
           if grep -q LINUXLIVE_INSTALLED "$RESULTS/modes/install/serial.log" 2>/dev/null; then
             python linuxlive/scripts/boottest.py --iso "$ISO" --mode installed-uefi-sb --disk build/disk.qcow2 --session --out "$RESULTS/modes/installed-uefi-sb" || true
