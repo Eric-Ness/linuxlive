@@ -29,7 +29,23 @@ branding:
   wallpaper: assets/wallpaper.png   # PNG or JPEG, at least 1280x720
   logo: assets/logo.png             # square PNG: 128, 256 or 512 px
   accent_color: "#c2185b"           # optional
+# Optional extras (since v0.4.0): the distro's own additions.
+packages: [htop]                    # from the base's own archive
+files:
+  - {src: files/motd, dest: /etc/motd}   # under /etc or /usr
+scripts:
+  build: [scripts/build.sh]              # root, in the image build
+  first-boot: [scripts/first-boot.sh]    # root, once, on an installed system
+  first-login: [scripts/first-login.sh]  # each user, once
+repos:                                   # GitHub code at an exact commit
+  - url: https://github.com/owner/name
+    commit: 3f2a9c1e5b7d4e8a9c217d4e5f6a8b904c1d2e3f
+    run: make install PREFIX=/usr
 ```
+
+Extras run before linuxlive's own last build step (finalize), so branding,
+the installer and the boot checks still come last; CI checks every extra in
+the live session and on the installed disk.
 
 The full format is the JSON Schema in
 [linuxlive/data/spec.schema.json](linuxlive/data/spec.schema.json), so a web
@@ -216,6 +232,11 @@ Cinnamon on both:
   first-boot service creates the user before the login screen starts. CI
   installs the Fedora examples the same way and checks the installed system
   runs the published image from xfs.
+- Since v0.4.0 a spec can add its own packages, files, build, first-boot and
+  first-login scripts, and GitHub repos built in at an exact commit. The
+  TestOS examples use every kind; the boot check reports each one and
+  `verify-results` checks them in the live session and on the installed disk.
+  Repos and their commits are listed in the ISO's package list.
 
 What it did not prove, or found broken:
 

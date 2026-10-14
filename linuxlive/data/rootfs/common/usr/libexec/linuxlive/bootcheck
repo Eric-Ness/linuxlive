@@ -94,6 +94,35 @@ for app in $(flatpak list --system --app --columns=application 2>/dev/null); do
 	fact flatpak "$app"
 done
 
+# The distro's own packages and files (packages and files in its spec), and
+# what its build steps ran (usr/libexec/linuxlive/user-build).
+package_installed() {
+	if command -v dpkg-query >/dev/null 2>&1; then
+		if dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'ok installed'; then printf yes; else printf no; fi
+	elif rpm -q --quiet --whatprovides "$1" 2>/dev/null; then
+		printf yes
+	else
+		printf no
+	fi
+}
+if [ -f /usr/lib/linuxlive/extras.json ]; then
+	python3 -c 'import json, sys
+extras = json.load(open(sys.argv[1]))
+for name in extras.get("packages", []):
+    print("package", name)
+for dest in extras.get("files", []):
+    print("file", dest)' /usr/lib/linuxlive/extras.json 2>/dev/null |
+		while read -r kind value; do
+			case $kind in
+			package) fact extra_package "$value=$(package_installed "$value")" ;;
+			file) fact extra_file "$value=$(sha256sum "$value" 2>/dev/null | cut -d' ' -f1)" ;;
+			esac
+		done
+fi
+if [ -f /usr/lib/linuxlive/user-build.log ]; then
+	while IFS= read -r line; do fact user_build "$line"; done </usr/lib/linuxlive/user-build.log
+fi
+
 # Upstream branding that a distro which isn't Ubuntu or Fedora must not show.
 if command -v rpm >/dev/null 2>&1; then
 	logos=$(rpm -qa --qf '%{NAME} ' 'fedora-logos*' 2>/dev/null)
@@ -263,6 +292,10 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 			fact kde_launcher_icon "$(kde_launcher_icons "$user")"
 		fi
 		fact failed_units "$(failed_units)"
+		# The distro's first-boot scripts ran before the login screen (installed systems).
+		if [ -f /var/lib/linuxlive/first-boot.log ]; then
+			while read -r name rc; do fact first_boot_script "$name=$rc"; done </var/lib/linuxlive/first-boot.log
+		fi
 		if [ -d /sys/fs/selinux ]; then
 			fact avc_denials "$(journalctl -k -b --no-pager 2>/dev/null | grep -c 'avc:  denied')"
 			journalctl -k -b --no-pager -o cat 2>/dev/null | grep 'avc:  denied' | head -n 5 |
@@ -287,6 +320,20 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		wizards=$(pgrep -u "$user" -a -f 'initial-setup|desktop-provision|ubuntu-welcome|plasma-welcome|plasma-setup' 2>/dev/null |
 			awk '{print $2}' | xargs -r -n 1 basename | sort -u | tr '\n' ' ' | sed 's/ $//')
 		fact first_login_wizard "${wizards:-none}"
+		# The distro's first-login scripts, which the session started at login.
+		if [ -d /usr/lib/linuxlive/first-login.d ]; then
+			home=$(getent passwd "$user" | cut -d: -f6)
+			tries=0
+			while [ ! -e "$home/.local/state/linuxlive/first-login-done" ] && [ "$tries" -lt 30 ]; do
+				tries=$((tries + 1))
+				sleep 2
+			done
+			if [ -f "$home/.local/state/linuxlive/first-login.log" ]; then
+				while read -r name rc; do fact first_login_script "$name=$rc"; done <"$home/.local/state/linuxlive/first-login.log"
+			else
+				fact first_login_script none
+			fi
+		fi
 		fact update_notifiers "$(update_notifiers "$user")"
 		fact gnome_software_updates "$(gnome_software_updates "$user" "$pid")"
 		if [ "$shell" = plasmashell ]; then

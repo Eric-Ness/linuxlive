@@ -146,6 +146,13 @@ casper) chroot "$root" dpkg-query -W --showformat='${binary:Package} ${Version} 
 liveos) chroot "$root" rpm -qa --qf '%{NAME}.%{ARCH} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{SOURCERPM}\n' ;;
 esac | LC_ALL=C sort >"$out.packages"
 [[ -s $out.packages ]] || die "no package list"
+# Code the spec built in from GitHub (repos), at the commit it was built from,
+# with the address of that commit's source archive.
+if [[ -f $root/usr/lib/linuxlive/repos.txt ]]; then
+	while read -r url commit; do
+		printf '%s %s %s/archive/%s.tar.gz\n' "${url#https://}" "$commit" "$url" "$commit"
+	done <"$root/usr/lib/linuxlive/repos.txt" >>"$out.packages"
+fi
 case $LL_LIVE_LAYOUT in
 casper)
 	mkdir -p "$iso/casper"

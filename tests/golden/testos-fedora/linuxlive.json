@@ -28,6 +28,35 @@
     "label": "KDE Plasma",
     "shell_process": "plasmashell"
   },
+  "extras": {
+    "files": [
+      {
+        "dest": "/etc/motd",
+        "mode": "0644",
+        "sha256": "ba4985e4af7562852acb57d0d4bdbcc0cfba4f04cd30a5de608d18346130d702"
+      }
+    ],
+    "packages": [
+      "htop"
+    ],
+    "repos": [
+      {
+        "commit": "7de84ed49850a29bc2fce32d66d0d83509b99daf",
+        "url": "https://github.com/Eric-Ness/linuxlive"
+      }
+    ],
+    "scripts": {
+      "build": [
+        "10-build.sh"
+      ],
+      "first-boot": [
+        "10-first-boot.sh"
+      ],
+      "first-login": [
+        "10-first-login.sh"
+      ]
+    }
+  },
   "id": "testos",
   "iso": {
     "file_name": "testos-0.1-fedora-amd64.iso",

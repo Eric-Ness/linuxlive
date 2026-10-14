@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 
 from linuxlive.catalog import Catalog, load_catalog
-from linuxlive.compiler import fedora, ubuntu
+from linuxlive.compiler import extras, fedora, ubuntu
 from linuxlive.compiler.common import add_branding, add_iso_env
 from linuxlive.compiler.context import MARKER, BuildContext, CompileError
 from linuxlive.compiler.plan import Plan, plan_build
@@ -40,7 +40,11 @@ def build_context(spec: Spec, catalog: Catalog | None = None) -> tuple[BuildCont
     add_branding(ctx, plan)
     add_iso_env(ctx, plan)
     add_base(ctx, plan)
-    ctx.add_text("linuxlive.json", json.dumps(plan.as_dict(), indent=2, sort_keys=True))
+    extras.add_extras(ctx, plan)
+    resolved = plan.as_dict()
+    if extras.has_extras(plan):
+        resolved["extras"] = extras.as_dict(plan)
+    ctx.add_text("linuxlive.json", json.dumps(resolved, indent=2, sort_keys=True))
     return ctx, plan
 
 

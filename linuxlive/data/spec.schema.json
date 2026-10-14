@@ -64,6 +64,96 @@
           "pattern": "^#[0-9a-fA-F]{6}$"
         }
       }
+    },
+    "packages": {
+      "description": "Packages from the base's own archive (Ubuntu's apt or Fedora's dnf), installed into the image.",
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 100,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9+._-]{0,99}$"}
+    },
+    "files": {
+      "description": "Files copied into the image, under /etc or /usr. At most 20 MB in all.",
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["src", "dest"],
+        "properties": {
+          "src": {
+            "description": "The file, relative to the spec file and inside its folder.",
+            "type": "string",
+            "minLength": 1
+          },
+          "dest": {
+            "description": "Where it goes in the system: an absolute path under /etc or /usr.",
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^/(etc|usr)/[A-Za-z0-9._+@-][A-Za-z0-9._+@/-]*$"
+          },
+          "mode": {
+            "description": "Permissions in octal, for example \"0644\" (the default) or \"0755\".",
+            "type": "string",
+            "pattern": "^0?[0-7]{3}$"
+          }
+        }
+      }
+    },
+    "scripts": {
+      "description": "Shell scripts of the distro's own, relative to the spec file and inside its folder, run in order.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "build": {
+          "description": "Run as root while the image is built, with the network, after packages, apps and files.",
+          "$ref": "#/$defs/script_list"
+        },
+        "first-boot": {
+          "description": "Run once as root on an installed system, before its first login screen.",
+          "$ref": "#/$defs/script_list"
+        },
+        "first-login": {
+          "description": "Run once for each user at their first login, as that user. In the live session, at every start.",
+          "$ref": "#/$defs/script_list"
+        }
+      }
+    },
+    "repos": {
+      "description": "Code from GitHub, fetched at an exact commit and built into the image with its run command.",
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["url", "commit", "run"],
+        "properties": {
+          "url": {
+            "description": "The repository, as https://github.com/owner/name.",
+            "type": "string",
+            "pattern": "^https://github\\.com/[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$"
+          },
+          "commit": {
+            "description": "The full 40-character commit to build.",
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "run": {
+            "description": "Shell commands run as root in the repository's checkout, for example: make install PREFIX=/usr",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "script_list": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
     }
   }
 }

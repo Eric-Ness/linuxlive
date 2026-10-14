@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from tests.conftest import EXAMPLES, PINK, solid_png
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 GB = 1 << 30
+REPO_COMMIT = "7de84ed49850a29bc2fce32d66d0d83509b99daf"
+MOTD_SHA = hashlib.sha256((EXAMPLES / "assets/extras/motd").read_bytes()).hexdigest()
 
 
 def iso_report(layout: str) -> dict:
@@ -77,6 +80,11 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         if base == "fedora":  # TestOS on Fedora is KDE
             facts["kde_launcher_icon"] = ["linuxlive-logo"]
             facts["plasma_welcome_installer"] = ["none"]
+        # The TestOS examples' own packages, file, build steps and first-login script.
+        facts["extra_package"] = ["htop=yes"]
+        facts["extra_file"] = [f"/etc/motd={MOTD_SHA}"]
+        facts["user_build"] = [f"repo https://github.com/Eric-Ness/linuxlive {REPO_COMMIT} ok", "build 10-build.sh ok"]
+        facts["first_login_script"] = ["10-first-login.sh=0"]
         markers.append("LINUXLIVE_SESSION_READY")
     return {
         "mode": mode,
@@ -110,7 +118,8 @@ def make_results(root: Path, base: str = "ubuntu") -> Path:
     installed = boot_result("uefi-sb-cd", base, session=True)
     installed["mode"] = "installed-uefi-sb"
     installed["facts"].update(boot_medium=["disk"], login_users=["tester"], session_user=["tester"],
-                              flatpak=live["facts"]["flatpak"], first_login_wizard=["none"], installer_icon=["menu-only"])
+                              flatpak=live["facts"]["flatpak"], first_login_wizard=["none"], installer_icon=["menu-only"],
+                              first_boot_script=["10-first-boot.sh=0"])
     if base == "ubuntu":
         installed["facts"].update(root_fstype=["ext4"], casper_installed=["no"])
     else:
@@ -168,6 +177,22 @@ BREAKS = {
     "installed disk started the ISO instead": (*_set_fact("installed-uefi-sb", "boot_medium", ["live"]), "started from the disk, not the ISO (boot_medium 'live')"),
     "installed disk without Secure Boot": (*_set_fact("installed-uefi-sb", "secureboot", ["0"]), "installed-uefi-sb: Secure Boot on (guest reports '0')"),
     "installed apps missing": (*_set_fact("installed-uefi-sb", "flatpak", []), "the live session's apps are installed"),
+    "spec's package missing": (*_set_fact(SESSION_MODE, "extra_package", ["htop=no"]), "package htop is installed"),
+    "spec's file changed": (*_set_fact(SESSION_MODE, "extra_file", ["/etc/motd=" + "0" * 64]), "/etc/motd holds the spec's motd"),
+    "build script did not run": (
+        *_set_fact(SESSION_MODE, "user_build", [f"repo https://github.com/Eric-Ness/linuxlive {REPO_COMMIT} ok"]),
+        "build script 10-build.sh ran",
+    ),
+    "repo built at another commit": (
+        *_set_fact(SESSION_MODE, "user_build", ["repo https://github.com/Eric-Ness/linuxlive " + "a" * 40 + " ok", "build 10-build.sh ok"]),
+        "repo Eric-Ness/linuxlive was built in at 7de84ed49850",
+    ),
+    "first-login script failed": (*_set_fact(SESSION_MODE, "first_login_script", ["10-first-login.sh=1"]), "first-login script 10-first-login.sh ran and succeeded"),
+    "first-boot script failed": (
+        *_set_fact("installed-uefi-sb", "first_boot_script", ["10-first-boot.sh=2"]),
+        "installed-uefi-sb: first-boot script 10-first-boot.sh ran and succeeded",
+    ),
+    "installed system lost the spec's file": (*_set_fact("installed-uefi-sb", "extra_file", []), "installed-uefi-sb: /etc/motd holds"),
     "Ubuntu's welcome wizard opens on the installed desktop": (
         *_set_fact("installed-uefi-sb", "first_login_wizard", ["gnome-initial-setup"]),
         "no first-login welcome wizard opens (running: 'gnome-initial-setup')",

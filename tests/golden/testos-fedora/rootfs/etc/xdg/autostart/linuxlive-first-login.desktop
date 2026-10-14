@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=TestOS first-login setup
+Exec=/usr/libexec/linuxlive/first-login-scripts
+NoDisplay=true
+X-GNOME-Autostart-Phase=Application
