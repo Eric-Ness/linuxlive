@@ -56,7 +56,7 @@ def add_extras(ctx: BuildContext, plan: Plan) -> None:
             raise CompileError(f"files: {f.dest} is a file linuxlive writes itself; pick another place")
         ctx.add_bytes(path, f.src.read_bytes(), mode=f.mode)
     for name, src in zip(script_names(spec.scripts.build), spec.scripts.build):
-        ctx.add_bytes(f"{EXTRAS_DIR}/build/{name}", _text(src), mode=0o755)
+        ctx.add_bytes(f"{EXTRAS_DIR}/build-scripts/{name}", _text(src), mode=0o755)
     for i, repo in enumerate(spec.repos):
         number = f"{(i + 1) * 10:02d}"
         ctx.add_text(f"{EXTRAS_DIR}/repos/{number}.repo", f"{repo.url}\n{repo.commit}\n")

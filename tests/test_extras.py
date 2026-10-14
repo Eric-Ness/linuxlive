@@ -109,7 +109,7 @@ def test_compiled_context_places_every_addition(workspace, base):
     assert files["rootfs/etc/motd"] == (b"hello\n", 0o644)
     assert files["rootfs/usr/share/hello/motd"][1] == 0o755
     # Scripts get LF line ends and run in their listed order.
-    assert files["extras/build/10-setup.sh"] == (b"#!/bin/sh\necho built\n", 0o755)
+    assert files["extras/build-scripts/10-setup.sh"] == (b"#!/bin/sh\necho built\n", 0o755)
     assert files["extras/repos/10.repo"][0] == f"{REPO['url']}\n{COMMIT}\n".encode()
     assert files["extras/repos/10.run"][0] == b"make install\n"
     assert "rootfs/usr/lib/linuxlive/first-boot.d/10-boot.sh" in files

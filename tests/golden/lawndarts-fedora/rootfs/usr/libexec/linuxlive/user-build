@@ -54,11 +54,11 @@ for repo in "$dir"/repos/*.repo; do
 done
 rm -rf "$work"
 
-for script in "$dir"/build/*; do
+for script in "$dir"/build-scripts/*; do
 	[ -f "$script" ] || continue
 	name=$(basename "$script")
 	say "running $name"
-	(cd "$dir/build" && "$script")
+	(cd "$dir/build-scripts" && "$script")
 	printf 'build %s ok\n' "$name" >>"$log"
 done
 [ -s "$lib/repos.txt" ] || rm -f "$lib/repos.txt"
