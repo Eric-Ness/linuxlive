@@ -4,7 +4,16 @@
 #
 #   jobs:
 #     build:
-#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.2.0
+#       permissions:
+#         contents: read
+#         packages: write
+#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.3.0
+#       with:
+#         publish-image: true
+#
+# Fedora-based ISOs install by pulling their bootc image from ghcr.io, so they
+# are installable only when the caller publishes it (publish-image with
+# packages: write). Ubuntu-based ISOs install from the ISO and ignore both.
 #
 # The calling repository holds the spec and its art. The pipeline itself is
 # checked out from linuxlive-repository at linuxlive-ref, which defaults to the
@@ -50,7 +59,7 @@ on:
         description: Pipeline version to build with (a tag, branch or commit)
         type: string
         # Changed with each release; tests/test_workflows.py checks it matches pyproject.toml.
-        default: v0.2.0
+        default: v0.3.0
 
 defaults:
   run:
