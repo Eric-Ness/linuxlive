@@ -29,15 +29,19 @@ def branding():
 
 
 def disks():
-    out = subprocess.run(["sudo", "-n", BACKEND, "--list-disks"], capture_output=True, text=True).stdout
+    """The disks install-to-disk sees, and why there are none when it sees none."""
+    run = subprocess.run(["sudo", "-n", BACKEND, "--list-disks"], capture_output=True, text=True)
     found = []
-    for line in out.splitlines():
+    if run.returncode != 0:
+        why = (run.stderr.strip().splitlines() or ["no answer"])[-1]
+        return found, f"the installer could not look at the disks ({why})"
+    for line in run.stdout.splitlines():
         parts = line.split("\t")
         if len(parts) >= 3:
             path, size, state = parts[0], int(parts[1] or 0), parts[2]
             model = parts[3] if len(parts) > 3 else ""
             found.append((path, size, state, model))
-    return found
+    return found, None if found else "no disks were found; in a virtual machine, add a disk of 20 GB or more and restart"
 
 
 def current_timezone():
@@ -80,12 +84,17 @@ class Installer(Gtk.Window):
 
         self.disk = Gtk.ComboBoxText()
         self.disk_paths = []
-        for path, size, state, model in disks():
+        found, problem = disks()
+        for path, size, state, model in found:
             label = f"{path}  {size / 1e9:.0f} GB  {model}".strip()
             if state != "ok":
                 label += f"  (cannot use: {state})"
             self.disk.append_text(label)
             self.disk_paths.append((path, state == "ok"))
+        if problem:
+            self.disk.append_text(f"No disk to install on: {problem}")
+            self.disk_paths.append((None, False))
+            self.disk.set_active(0)
         usable = [i for i, (_, ok) in enumerate(self.disk_paths) if ok]
         if usable:
             self.disk.set_active(usable[0])

@@ -287,6 +287,13 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 			else
 				fact installer_icon menu-only
 			fi
+			# What the installer's window sees: it lists the disks as this user,
+			# through sudo -n, exactly so (usr/libexec/linuxlive/installer).
+			if listing=$(runuser -u "$user" -- sudo -n /usr/libexec/linuxlive/install-to-disk --list-disks 2>&1); then
+				fact installer_disks "$(printf '%s\n' "$listing" | grep -c .)"
+			else
+				fact installer_disks "refused: $(printf '%s' "$listing" | tail -n 1)"
+			fi
 		fi
 		if [ "$shell" = plasmashell ]; then
 			fact kde_launcher_icon "$(kde_launcher_icons "$user")"

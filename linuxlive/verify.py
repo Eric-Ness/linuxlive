@@ -248,6 +248,10 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
     shell = plan.desktop.shell_process
     c.expect(_fact(result, "shell") == shell, f"desktop shell is {_fact(result, 'shell')!r}, expected {shell!r}")
     c.expect(_fact(result, "installer_icon") == "desktop", f"the live desktop shows the installer (installer_icon {_fact(result, 'installer_icon')!r})")
+    # The installer's window lists disks as the live user, through sudo -n; the
+    # boot medium itself is always among them.
+    listed = _fact(result, "installer_disks") or ""
+    c.expect(listed.isdigit() and int(listed) >= 1, f"the installer's window can list the disks as the live user (installer_disks {listed!r})")
     c.expect(_fact(result, "first_login_wizard") == "none", f"no upstream welcome wizard opens in the live session (running: {_fact(result, 'first_login_wizard')!r})")
     after = _fact(result, "shell_after_settle")
     errors = _facts(result, "session_error")

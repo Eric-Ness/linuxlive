@@ -74,6 +74,7 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         facts["update_notifiers"] = ["none"]
         facts["gnome_software_updates"] = ["false" if base == "ubuntu" else "absent"]
         facts["installer_icon"] = ["desktop"]
+        facts["installer_disks"] = ["1"]
         facts["first_login_wizard"] = ["none"]
         if base == "ubuntu":
             facts["casper_md5check"] = ["pass"]
@@ -199,6 +200,10 @@ BREAKS = {
     ),
     "installed disk fails under BIOS": ("modes/installed-bios/result.json", lambda d: d.update(outcome="timeout"), "the installed disk boots under BIOS (outcome 'timeout')"),
     "no installer on the live desktop": (*_set_fact(SESSION_MODE, "installer_icon", ["menu-only"]), "the live desktop shows the installer (installer_icon 'menu-only')"),
+    "the installer's window may not list disks": (
+        *_set_fact(SESSION_MODE, "installer_disks", ["refused: sudo: a password is required"]),
+        "the installer's window can list the disks as the live user (installer_disks 'refused: sudo: a password is required')",
+    ),
     "results from another commit": ("meta.json", lambda d: d.update(commit="f" * 40), "results come from commit"),
     "results for another base": ("meta.json", lambda d: d.update(base="fedora"), "results are for base"),
     "wrong volume id": ("iso.json", lambda d: d.update(volume_id="OTHER"), "volume ID is 'OTHER'"),
