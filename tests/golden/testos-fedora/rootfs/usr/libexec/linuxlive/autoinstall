@@ -23,7 +23,7 @@ if /usr/libexec/linuxlive/install-to-disk --disk "$(value disk)" --confirm "$(va
 	say LINUXLIVE_INSTALLED
 else
 	say "LINUXLIVE_FACT install_error=$(grep '^ERROR ' /tmp/linuxlive-install.log | tail -n 1 | cut -c7-)"
-	tail -n 20 /tmp/linuxlive-install.log | while IFS= read -r line; do say "LINUXLIVE_FACT install_log=$line"; done
+	tail -n 40 /tmp/linuxlive-install.log | while IFS= read -r line; do say "LINUXLIVE_FACT install_log=$line"; done
 	say LINUXLIVE_INSTALL_FAILED
 fi
 rm -f "$pw"

@@ -165,9 +165,19 @@ progress 76 "Setting up the system"
 udevadm settle
 root=$(lsblk -bnpo PATH,SIZE,TYPE "$disk" | awk '$3 == "part"' | sort -k2 -n | tail -n 1 | awk '{print $1}')
 mnt=$(mktemp -d /tmp/linuxlive-root.XXXXXX)
-# bootc leaves the partition's block device read-only when it finishes.
+# The new root has come back read-only after bootc ("source write-protected"):
+# clear the read-only flag on the disk and the partition, and if a writable
+# mount still fails, say why.
+blockdev --setrw "$disk" 2>/dev/null || true
 blockdev --setrw "$root" 2>/dev/null || true
-mount -o rw "$root" "$mnt" || die "the installed system's partition $root could not be opened for writing"
+if ! mount -o rw "$root" "$mnt" 2>/dev/null || ! touch "$mnt/.linuxlive-rw" 2>/dev/null; then
+	mountpoint -q "$mnt" && umount "$mnt"
+	printf 'read-only flags: disk %s, partition %s\n' "$(blockdev --getro "$disk" 2>&1)" "$(blockdev --getro "$root" 2>&1)"
+	lsblk -o NAME,SIZE,RO,FSTYPE,MOUNTPOINTS "$disk" 2>&1
+	dmesg 2>/dev/null | tail -n 12
+	die "the installed system's partition $root could not be opened for writing"
+fi
+rm -f "$mnt/.linuxlive-rw"
 deploy=$(find "$mnt/ostree/deploy" -mindepth 3 -maxdepth 3 -type d -path '*/deploy/*.0' | head -n 1)
 [ -n "$deploy" ] || die "the installed system was not found on $root"
 var=$(dirname "$(dirname "$deploy")")/var
