@@ -40,12 +40,14 @@ done
 
 # Nor does Plasma Welcome open at all: its first page says "Welcome to
 # Fedora!" beside Fedora's logo. A KDED module starts it unless the user's
-# plasma-welcomerc says it was seen (a version newer than any Plasma) or
-# should not show; the file may not exist yet.
+# plasma-welcomerc says it was seen (a version newer than any Plasma). It
+# always starts it when LiveEnvironment is true, which livesys writes, so
+# that goes too; the file may not exist yet.
 if [ -e /usr/libexec/plasma-welcome ] || command -v plasma-welcome >/dev/null 2>&1; then
 	for home in /home/*; do
 		[ -d "$home" ] || continue
 		rc=$home/.config/plasma-welcomerc
+		/usr/libexec/linuxlive/ini-set "$rc" General LiveEnvironment false
 		/usr/libexec/linuxlive/ini-set "$rc" General ShouldShow false
 		/usr/libexec/linuxlive/ini-set "$rc" General LastSeenVersion 99.0.0
 		chown --reference="$home" "$home/.config" "$rc"
