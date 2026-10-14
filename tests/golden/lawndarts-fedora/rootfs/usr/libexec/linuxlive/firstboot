@@ -23,6 +23,10 @@ useradd -m -c "$LL_FULLNAME" -G wheel -p "$LL_PASSWORD_HASH" "$LL_USER"
 home=$(getent passwd "$LL_USER" | cut -d: -f6)
 # And from the new user's own desktop, should a copy have come with the home.
 rm -f "$home/Desktop/linuxlive-install.desktop"
+# No Plasma Welcome (its first page says "Welcome to Fedora!" beside Fedora's
+# logo): a KDED module opens it unless this says it was seen or should not show.
+/usr/libexec/linuxlive/ini-set "$home/.config/plasma-welcomerc" General ShouldShow false
+/usr/libexec/linuxlive/ini-set "$home/.config/plasma-welcomerc" General LastSeenVersion 99.0.0
 
 # No first-login welcome (upstream's, with upstream's artwork): setup is
 # marked done, and its autostart entries and user units are switched off.
