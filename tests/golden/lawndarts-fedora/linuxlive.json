@@ -30,6 +30,7 @@
   },
   "id": "lawn-darts-linux",
   "iso": {
+    "arch": "amd64",
     "file_name": "lawn-darts-linux-0.1-fedora-amd64.iso",
     "kernel_args": "root=live:CDLABEL=LAWN_DARTS_LINUX_0_1 rd.live.image rd.live.overlay.overlayfs=1 quiet rhgb",
     "layout": "liveos",

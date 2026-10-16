@@ -30,9 +30,9 @@ __all__ = ["MARKER", "BuildContext", "CompileError", "Plan", "build_context", "c
 _BASES = {"ubuntu": ubuntu.add_base, "fedora": fedora.add_base}
 
 
-def build_context(spec: Spec, catalog: Catalog | None = None) -> tuple[BuildContext, Plan]:
-    """Build the context in memory without touching the disk."""
-    plan = plan_build(spec, catalog or load_catalog())
+def build_context(spec: Spec, catalog: Catalog | None = None, arch: str = "") -> tuple[BuildContext, Plan]:
+    """Build the context in memory without touching the disk (for one of the spec's arches)."""
+    plan = plan_build(spec, catalog or load_catalog(), arch)
     add_base = _BASES.get(plan.base.id)
     if add_base is None:
         raise CompileError(f"no build recipe for base {plan.base.id}")
@@ -51,7 +51,7 @@ def build_context(spec: Spec, catalog: Catalog | None = None) -> tuple[BuildCont
     return ctx, plan
 
 
-def compile_spec(spec: Spec, outdir: Path, catalog: Catalog | None = None) -> Plan:
-    ctx, plan = build_context(spec, catalog)
+def compile_spec(spec: Spec, outdir: Path, catalog: Catalog | None = None, arch: str = "") -> Plan:
+    ctx, plan = build_context(spec, catalog, arch)
     ctx.write(Path(outdir))
     return plan

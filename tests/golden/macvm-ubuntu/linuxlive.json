@@ -1,0 +1,42 @@
+{
+  "apps": [
+    {
+      "flatpak": "org.mozilla.firefox",
+      "id": "firefox",
+      "name": "Firefox"
+    },
+    {
+      "flatpak": "org.videolan.VLC",
+      "id": "vlc",
+      "name": "VLC"
+    }
+  ],
+  "base": {
+    "id": "ubuntu",
+    "label": "Ubuntu 26.04 LTS",
+    "release": "26.04"
+  },
+  "base_image": "docker.io/library/ubuntu:26.04",
+  "branding": {
+    "accent_color": "#c2185b",
+    "gnome_accent": "pink",
+    "logo": "/usr/share/pixmaps/linuxlive-logo.png",
+    "wallpaper": "/usr/share/backgrounds/linuxlive/wallpaper.png"
+  },
+  "desktop": {
+    "id": "gnome",
+    "label": "GNOME",
+    "shell_process": "gnome-shell"
+  },
+  "id": "testos-arm",
+  "iso": {
+    "arch": "arm64",
+    "file_name": "testos-arm-0.1-ubuntu-arm64.iso",
+    "kernel_args": "boot=casper quiet splash ---",
+    "layout": "casper",
+    "persistence": false,
+    "volume_id": "TESTOS_ARM_0_1"
+  },
+  "name": "TestOS ARM",
+  "version": "0.1"
+}

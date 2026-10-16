@@ -125,6 +125,8 @@ class Spec:
     kiosk: str | None = None  # the app kiosk mode shows
     # Save changes to the USB stick (casper's persistence; Ubuntu only).
     persistence: bool = False
+    # The CPUs to build ISOs for, one ISO each.
+    arches: tuple[str, ...] = ("amd64",)
 
     @property
     def runs_own_code(self) -> bool:
@@ -248,6 +250,7 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
         firefox=firefox,
         kiosk=kiosk,
         persistence=persistence,
+        arches=tuple(raw.get("arches") or ("amd64",)),
     )
 
 

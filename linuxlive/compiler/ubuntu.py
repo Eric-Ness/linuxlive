@@ -74,6 +74,7 @@ def containerfile(plan: Plan) -> str:
     base = plan.base
     image = plan.base_image
     desktop = plan.variant.packages
+    efi = plan.arch.efi
     return f"""{header_comment(plan)}
 # Stage 1: unpack the signed Secure Boot chain (shim and GRUB) from Ubuntu's
 # packages without installing them. The ISO assembler copies these binaries
@@ -85,13 +86,14 @@ RUN set -eux; \\
     mkdir -p /tmp/debs /x /out; \\
     chown _apt /tmp/debs; \\
     cd /tmp/debs; \\
-    apt-get download {' '.join(base.efi_packages)}; \\
+    apt-get download {' '.join(plan.base_packages("efi_packages"))}; \\
     for deb in ./*.deb; do dpkg-deb -x "$deb" /x; done; \\
-    shim=/x/usr/lib/shim/shimx64.efi.dualsigned; \\
-    if [ ! -f "$shim" ]; then shim=/x/usr/lib/shim/shimx64.efi.signed.latest; fi; \\
-    cp "$shim" /out/shimx64.efi; \\
-    cp /x/usr/lib/shim/mmx64.efi /out/mmx64.efi; \\
-    cp /x/usr/lib/grub/x86_64-efi-signed/gcdx64.efi.signed /out/grubx64.efi
+    for shim in /x/usr/lib/shim/shim{efi}.efi.dualsigned /x/usr/lib/shim/shim{efi}.efi.signed.latest /x/usr/lib/shim/shim{efi}.efi.signed; do \\
+        if [ -f "$shim" ]; then break; fi; \\
+    done; \\
+    cp "$shim" /out/shim{efi}.efi; \\
+    cp /x/usr/lib/shim/mm{efi}.efi /out/mm{efi}.efi; \\
+    cp /x/usr/lib/grub/{plan.arch.grub_target}-signed/gcd{efi}.efi.signed /out/grub{efi}.efi
 
 # Stage 2: the distro.
 FROM {image}
@@ -121,9 +123,9 @@ RUN set -eux; \\
 # kept as .debs resolved against this image so the install works offline.
 {_apt("apt-get install -y " + " ".join(base.installer_packages),
       f"mkdir -p {INSTALLER_DEBS}/partial",
-      f"apt-get install -y --download-only -o Dir::Cache::archives={INSTALLER_DEBS} " + " ".join(base.bootloader_packages),
+      f"apt-get install -y --download-only -o Dir::Cache::archives={INSTALLER_DEBS} " + " ".join(plan.base_packages("bootloader_packages")),
       f"rm -rf {INSTALLER_DEBS}/partial {INSTALLER_DEBS}/lock",
-      f"ls {INSTALLER_DEBS}/grub-efi-amd64-signed_*.deb {INSTALLER_DEBS}/shim-signed_*.deb")}
+      f"ls {INSTALLER_DEBS}/grub-efi-{plan.arch.name}-signed_*.deb {INSTALLER_DEBS}/shim-signed_*.deb")}
 {options.packages_step(plan)}{packages_step(plan)}
 # Branding and linuxlive's boot check.
 COPY --from=efi /out/ /usr/lib/linuxlive/efi/

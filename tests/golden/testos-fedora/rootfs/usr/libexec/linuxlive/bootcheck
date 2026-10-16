@@ -10,7 +10,9 @@
 flag=/sys/firmware/qemu_fw_cfg/by_name/opt/linuxlive/bootcheck/raw
 [ -e "$flag" ] || modprobe qemu_fw_cfg 2>/dev/null
 [ -e "$flag" ] || exit 0
-exec 3>/dev/ttyS0 || exit 0
+# The first serial port: the 16550's on PCs, the PL011's on ARM (QEMU's virt machine).
+case $(uname -m) in aarch64) port=/dev/ttyAMA0 ;; *) port=/dev/ttyS0 ;; esac
+exec 3>"$port" || exit 0
 
 say() { printf '%s\n' "$*" >&3; }
 fact() { say "LINUXLIVE_FACT $1=$2"; }

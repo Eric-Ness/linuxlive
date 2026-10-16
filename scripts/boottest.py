@@ -13,7 +13,9 @@ for `python -m linuxlive verify-results`.
 Modes: bios-cd, uefi-cd, uefi-sb-cd (Secure Boot), bios-usb, uefi-usb; the
 installer's install, installed-uefi-sb and installed-bios; and persist-1 and
 persist-2, two boots of one writable stick image.
-Needs qemu-system-x86_64 and OVMF. Uses KVM when /dev/kvm is usable.
+Needs qemu-system-x86_64 and OVMF (--arch arm64: qemu-system-aarch64 and
+AAVMF, on QEMU's virt machine, which has no BIOS). Uses KVM when /dev/kvm is
+usable; GitHub's arm64 runners have none, so ARM boots are emulated (TCG).
 """
 
 from __future__ import annotations
@@ -66,6 +68,17 @@ OVMF = {
         ["/usr/share/OVMF/OVMF_VARS_4M.ms.fd", "/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd"],
     ),
 }
+# ARM64's UEFI firmware (AAVMF, Debian's qemu-efi-aarch64), with Microsoft's keys for Secure Boot.
+AAVMF = {
+    "uefi": (
+        ["/usr/share/AAVMF/AAVMF_CODE.no-secboot.fd", "/usr/share/AAVMF/AAVMF_CODE.fd", "/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw"],
+        ["/usr/share/AAVMF/AAVMF_VARS.fd", "/usr/share/edk2/aarch64/vars-template-pflash.raw"],
+    ),
+    "uefi-sb": (
+        ["/usr/share/AAVMF/AAVMF_CODE.secboot.fd", "/usr/share/AAVMF/AAVMF_CODE.ms.fd"],
+        ["/usr/share/AAVMF/AAVMF_VARS.ms.fd"],
+    ),
+}
 PREFIX = "LINUXLIVE_"
 
 
@@ -81,8 +94,10 @@ def kvm_usable() -> bool:
 
 
 def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, memory: int, cpus: int, kvm: bool,
-                 disk: Path | None = None, autoinstall_image: str = "", autoinstall_autologin: str = "on") -> list[str]:
+                 disk: Path | None = None, autoinstall_image: str = "", autoinstall_autologin: str = "on", arch: str = "amd64") -> list[str]:
     firmware, media = MODES[mode]
+    if arch == "arm64":
+        return arm_command(iso, mode, workdir, serial, qmp, memory, cpus, kvm, disk, autoinstall_image, autoinstall_autologin)
     machine = "q35,smm=on" if firmware == "uefi-sb" else "q35"
     cmd = [
         "qemu-system-x86_64",
@@ -148,6 +163,67 @@ def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, m
             "-device", "usb-storage,bus=xhci.0,drive=boot,bootindex=0",
         ]
     return cmd
+
+
+def _autoinstall(mode: str, autoinstall_image: str, autoinstall_autologin: str) -> list[str]:
+    if mode != "install":
+        return []
+    settings = AUTOINSTALL + (f";image={autoinstall_image}" if autoinstall_image else "")
+    if autoinstall_autologin == "spec":
+        settings += ";autologin=spec"
+    if "," in settings:
+        raise SystemExit("autoinstall settings may not contain commas (QEMU's -fw_cfg string)")
+    return ["-fw_cfg", f"name=opt/linuxlive/autoinstall,string={settings}"]
+
+
+def arm_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, memory: int, cpus: int, kvm: bool,
+                disk: Path | None, autoinstall_image: str, autoinstall_autologin: str) -> list[str]:
+    """QEMU's virt machine for ARM64 ISOs: UEFI only, a virtio GPU for the
+    desktop and its screenshots, USB keyboard and tablet, CDs on virtio-scsi."""
+    firmware, media = MODES[mode]
+    if firmware == "bios":
+        raise SystemExit(f"--mode {mode}: ARM computers have no BIOS")
+    code_paths, vars_paths = AAVMF[firmware]
+    vars_copy = workdir / "AAVMF_VARS.fd"
+    shutil.copyfile(first_existing(vars_paths), vars_copy)
+    cmd = [
+        "qemu-system-aarch64",
+        "-machine", "virt",
+        "-m", str(memory),
+        "-smp", str(cpus),
+        "-display", "none",
+        "-device", "virtio-gpu-pci",
+        "-device", "qemu-xhci,id=xhci",
+        "-device", "usb-kbd,bus=xhci.0",
+        "-device", "usb-tablet,bus=xhci.0",
+        "-serial", f"file:{serial}",
+        "-qmp", f"unix:{qmp},server=on,wait=off",
+        "-fw_cfg", "name=opt/linuxlive/bootcheck,string=1",
+        # No option ROM: the firmware needs none, and the runner's QEMU may lack it.
+        "-netdev", "user,id=net0",
+        "-device", "virtio-net-pci,netdev=net0,romfile=",
+        "-no-reboot",
+        "-drive", f"if=pflash,format=raw,unit=0,readonly=on,file={first_existing(code_paths)}",
+        "-drive", f"if=pflash,format=raw,unit=1,file={vars_copy}",
+    ]
+    # Pointer authentication is slow to emulate exactly; QEMU's own variant is much faster.
+    cmd += ["-accel", "kvm", "-cpu", "host"] if kvm else ["-accel", "tcg,thread=multi", "-cpu", "max,pauth-impdef=on"]
+    if "disk" in media:
+        if disk is None:
+            raise SystemExit(f"--mode {mode} needs --disk")
+        cmd += ["-drive", f"if=none,id=hd,format=qcow2,file={disk}",
+                "-device", f"virtio-blk-pci,drive=hd,bootindex={1 if media == 'usb+disk' else 0}"]
+    cmd += _autoinstall(mode, autoinstall_image, autoinstall_autologin)
+    if media == "disk":
+        return cmd
+    if media == "usb-rw":
+        if disk is None:
+            raise SystemExit(f"--mode {mode} needs --disk (a raw stick image)")
+        return cmd + ["-drive", f"if=none,id=stick,format=raw,file={disk}", "-device", "usb-storage,bus=xhci.0,drive=stick,bootindex=0"]
+    if media == "cd":
+        return cmd + ["-drive", f"if=none,id=boot,media=cdrom,readonly=on,file={iso}",
+                      "-device", "virtio-scsi-pci,id=scsi", "-device", "scsi-cd,bus=scsi.0,drive=boot,bootindex=0"]
+    return cmd + ["-drive", f"if=none,id=boot,format=raw,readonly=on,file={iso}", "-device", "usb-storage,bus=xhci.0,drive=boot,bootindex=0"]
 
 
 class Qmp:
@@ -254,12 +330,13 @@ def run(args) -> int:
     session_timeout = args.session_timeout * scale
     settle = args.settle * scale
     cmd = qemu_command(Path(args.iso).resolve(), args.mode, workdir, serial, qmp_path, args.memory, args.cpus, kvm,
-                       Path(args.disk).resolve() if args.disk else None, args.autoinstall_image or "", args.autoinstall_autologin)
+                       Path(args.disk).resolve() if args.disk else None, args.autoinstall_image or "", args.autoinstall_autologin, args.arch)
     print(f"[boottest] {args.mode}: {'KVM' if kvm else 'TCG (no KVM)'}; boot timeout {boot_timeout}s", flush=True)
     print("[boottest] " + " ".join(cmd), flush=True)
 
     result: dict = {
         "mode": args.mode,
+        "arch": args.arch,
         "firmware": MODES[args.mode][0],
         "media": MODES[args.mode][1],
         "accel": "kvm" if kvm else "tcg",
@@ -367,6 +444,7 @@ def main() -> int:
     parser.add_argument("--out", required=True, help="directory for result.json, logs and screenshots")
     parser.add_argument("--session", action="store_true", help="wait for the desktop session and take screenshots")
     parser.add_argument("--accel", choices=("auto", "kvm", "tcg"), default="auto")
+    parser.add_argument("--arch", choices=("amd64", "arm64"), default="amd64", help="the ISO's CPU (arm64: QEMU's virt machine)")
     parser.add_argument("--memory", type=int, default=4096, help="guest RAM in MiB")
     parser.add_argument("--cpus", type=int, default=2)
     parser.add_argument("--boot-timeout", type=int, default=480, help="seconds until the boot check starts (KVM)")

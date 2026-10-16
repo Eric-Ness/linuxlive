@@ -40,11 +40,14 @@ MB = 1 << 20
 COMMON_FILES = {
     ".disk/info": 1,
     "boot/grub/grub.cfg": 1,
-    "boot/grub/i386-pc/eltorito.img": 1,
-    "EFI/BOOT/BOOTX64.EFI": 100 * 1024,
-    "EFI/BOOT/grubx64.efi": 100 * 1024,
-    "EFI/BOOT/mmx64.efi": 1,
 }
+# The UEFI boot chain on each CPU, and BIOS GRUB on PCs.
+ARCH_FILES = {
+    "amd64": {"boot/grub/i386-pc/eltorito.img": 1, "EFI/BOOT/BOOTX64.EFI": 100 * 1024, "EFI/BOOT/grubx64.efi": 100 * 1024, "EFI/BOOT/mmx64.efi": 1},
+    "arm64": {"EFI/BOOT/BOOTAA64.EFI": 100 * 1024, "EFI/BOOT/grubaa64.efi": 100 * 1024, "EFI/BOOT/mmaa64.efi": 1},
+}
+# ARM computers have no BIOS: their ISOs boot from CD and USB through UEFI only.
+ARCH_BOOT_MODES = {"amd64": ("bios-cd", "uefi-cd", "uefi-sb-cd", "bios-usb", "uefi-usb"), "arm64": ("uefi-cd", "uefi-sb-cd", "uefi-usb")}
 LAYOUT_FILES = {
     "casper": {"casper/filesystem.squashfs": 500 * MB, "casper/vmlinuz": 5 * MB, "casper/initrd": 10 * MB},
     "liveos": {"LiveOS/squashfs.img": 500 * MB, "live/vmlinuz": 5 * MB, "live/initrd.img": 10 * MB},
@@ -110,13 +113,16 @@ def check_iso(plan: Plan, results: Path) -> list[Outcome]:
         return c.outcomes
     c.expect(iso.get("volume_id") == plan.volid, f"volume ID is {iso.get('volume_id')!r}, expected {plan.volid!r}")
     torito = iso.get("el_torito") or {}
-    c.expect(torito.get("bios") is True, "El Torito catalog has a bootable BIOS entry")
+    if plan.arch.bios:
+        c.expect(torito.get("bios") is True, "El Torito catalog has a bootable BIOS entry")
+        c.expect((iso.get("mbr") or {}).get("signature") is True, "MBR boot signature is present (USB BIOS boot)")
+    else:
+        c.expect(torito.get("bios") is not True, f"no BIOS entry in El Torito on {plan.arch.name} (it has no BIOS)")
     c.expect(torito.get("efi") is True, "El Torito catalog has a bootable EFI entry")
-    c.expect((iso.get("mbr") or {}).get("signature") is True, "MBR boot signature is present (USB BIOS boot)")
     gpt = iso.get("gpt") or {}
     c.expect(gpt.get("present") is True and gpt.get("esp") is not None, "GPT with an EFI system partition (USB UEFI boot)")
     files = iso.get("files") or {}
-    for name, minimum in {**COMMON_FILES, **LAYOUT_FILES[plan.live_layout]}.items():
+    for name, minimum in {**COMMON_FILES, **ARCH_FILES[plan.arch.name], **LAYOUT_FILES[plan.live_layout]}.items():
         size = files.get(name)
         c.expect(size is not None and size >= minimum, f"{name} is {size} bytes, needs at least {minimum}")
     if plan.live_layout == "casper":
@@ -134,9 +140,9 @@ def check_iso(plan: Plan, results: Path) -> list[Outcome]:
     return c.outcomes
 
 
-def check_boot(spec: Spec, results: Path) -> list[Outcome]:
+def check_boot(spec: Spec, results: Path, arch: str = "amd64") -> list[Outcome]:
     c = _Collector("boot")
-    for mode in BOOT_MODES:
+    for mode in ARCH_BOOT_MODES[arch]:
         result = _load(results / "modes" / mode / "result.json")
         if result is None:
             c.expect(False, f"{mode}: result.json is missing or not valid JSON")
@@ -465,6 +471,8 @@ def check_install(plan: Plan, results: Path) -> list[Outcome]:
         _check_extras(c, plan, uefi, "installed-uefi-sb: ", installed=True)
         _check_settings(c, plan, uefi, "installed-uefi-sb: ", live=False)
         _check_flatpak_runs(c, plan, uefi, "installed-uefi-sb: ")
+    if not plan.arch.bios:
+        return c.outcomes
     bios = _load(modes / "installed-bios" / "result.json")
     if bios is None:
         c.expect(False, "installed-bios: result.json is missing or not valid JSON")
@@ -517,12 +525,14 @@ def verify_results(
     if unknown:
         raise ValueError(f"unknown checks: {', '.join(sorted(unknown))}")
     results = Path(results)
-    plan = plan_build(spec, catalog or load_catalog())
+    # Which of the spec's ISOs these results are for (meta.json; older runs built amd64 only).
+    arch = (_load(results / "meta.json") or {}).get("arch") or "amd64"
+    plan = plan_build(spec, catalog or load_catalog(), arch)
     outcomes = check_meta(spec, results, expect_commit)
     if "iso" in checks:
         outcomes += check_iso(plan, results)
     if "boot" in checks:
-        outcomes += check_boot(spec, results)
+        outcomes += check_boot(spec, results, plan.arch.name)
     if "session" in checks:
         outcomes += check_session(plan, results)
     if "install" in checks:

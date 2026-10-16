@@ -136,6 +136,13 @@
         }
       }
     },
+    "arches": {
+      "description": "Which CPUs to build ISOs for: amd64 (PCs, the default) and arm64 (for example virtual machines on Apple-silicon Macs). Each gets its own ISO.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["amd64", "arm64"]}
+    },
     "persistence": {
       "description": "Save files and settings back to the USB stick the live system runs from. Ubuntu-based distros only, for now.",
       "type": "boolean"
