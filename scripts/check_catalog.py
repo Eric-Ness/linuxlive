@@ -94,6 +94,15 @@ def main() -> int:
                     checks.append((f"image {variant.image}", lambda r=variant.image: image_tag(r)))
         if base.image:
             checks.append((f"image {base.image}", lambda r=base.image: image_tag(r)))
+        # The languages' translations (compiler/options.py names them the same way) and kiosk mode.
+        for lang in catalog.languages.values():
+            if base.id == "ubuntu":
+                packages += [f"language-pack-{lang.ubuntu}", f"language-pack-gnome-{lang.ubuntu}", f"language-pack-kde-{lang.ubuntu}", *lang.ubuntu_fonts]
+            else:
+                packages.append(f"langpacks-{lang.fedora}")
+        if base.id == "ubuntu":
+            packages.append("cinnamon-l10n")
+        packages += catalog.kiosk_packages.get(base.id, ())
         if base.id == "ubuntu":
             codename = UBUNTU_CODENAMES[base.release]
             for name in dict.fromkeys(packages):

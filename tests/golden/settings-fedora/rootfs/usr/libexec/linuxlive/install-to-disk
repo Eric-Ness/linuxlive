@@ -1,0 +1,241 @@
+#!/bin/bash
+# linuxlive installer for Fedora-based distros, the part that does the work:
+# erases one whole disk and installs the distro's bootc image on it, so the
+# installed system updates itself to newer builds with `bootc upgrade`. The
+# installer window (installer) and the unattended test install (autoinstall)
+# both run it as root, with the same options and output as Ubuntu's.
+#
+#   install-to-disk --list-disks
+#   install-to-disk --disk /dev/sdX --user NAME --fullname "Full Name" \
+#                   --password-file FILE --hostname NAME --timezone Area/City \
+#                   [--autologin | --no-autologin] [--image REF] --confirm /dev/sdX
+#
+# The image is the one this build published (LL_IMAGE_REF in image.env, the
+# registry's :latest), downloaded during the install: it needs an internet
+# connection. --image installs from another reference of it (CI installs the
+# run's own tag) while the installed system still follows LL_IMAGE_REF.
+#
+# bootc lays out the disk (BIOS boot, EFI and an xfs root) and installs GRUB
+# through the image's signed shim for UEFI with Secure Boot, and for BIOS. It
+# streams the image into the target's own storage, not into RAM. The live
+# session's Flatpak apps are copied over, and linuxlive-firstboot creates the
+# user before the first login.
+set -euo pipefail
+export LC_ALL=C
+# shellcheck source=/dev/null
+. /usr/lib/linuxlive/branding.env
+LL_IMAGE_REF=""
+# shellcheck source=/dev/null
+[ -f /usr/lib/linuxlive/image.env ] && . /usr/lib/linuxlive/image.env
+MIN_BYTES=$((20 * 1000 * 1000 * 1000))
+mnt=""
+
+progress() { printf 'PROGRESS %s %s\n' "$1" "$2"; }
+die() {
+	printf 'ERROR %s\n' "$*"
+	exit 1
+}
+
+# The disk the live system was started from, if any.
+live_disk() {
+	src=$(findmnt -no SOURCE /run/initramfs/live 2>/dev/null | head -n 1)
+	[ -b "$src" ] || return 0
+	parent=$(lsblk -no PKNAME "$src" 2>/dev/null | head -n 1)
+	if [ -n "$parent" ]; then printf '/dev/%s' "$parent"; else printf '%s' "$src"; fi
+}
+
+disk_problem() {
+	d=$1
+	[ -b "$d" ] || {
+		printf 'not a block device'
+		return
+	}
+	[ "$(lsblk -dno TYPE "$d" 2>/dev/null)" = disk ] || {
+		printf 'not a whole disk'
+		return
+	}
+	[ "$(lsblk -dno RO "$d" 2>/dev/null | tr -d ' ')" = 0 ] || {
+		printf 'read-only'
+		return
+	}
+	[ "$d" != "$(live_disk)" ] || {
+		printf 'the live system is running from it'
+		return
+	}
+	if lsblk -nro MOUNTPOINTS "$d" 2>/dev/null | grep -q .; then
+		printf 'something on it is in use (mounted)'
+		return
+	fi
+	if grep -q "^$d" /proc/swaps 2>/dev/null; then
+		printf 'it holds active swap'
+		return
+	fi
+	[ "$(lsblk -bdno SIZE "$d")" -ge "$MIN_BYTES" ] || {
+		printf 'too small: needs %s GB' $((MIN_BYTES / 1000000000))
+		return
+	}
+	printf ok
+}
+
+list_disks() {
+	lsblk -dpno NAME,TYPE | awk '$2 == "disk" {print $1}' | while read -r d; do
+		case $d in /dev/loop* | /dev/zram* | /dev/sr*) continue ;; esac
+		printf '%s\t%s\t%s\t%s\n' "$d" "$(lsblk -bdno SIZE "$d")" "$(disk_problem "$d")" "$(lsblk -dno MODEL "$d" | sed 's/[[:space:]]*$//')"
+	done
+}
+
+cleanup() {
+	[ -n "$mnt" ] || return 0
+	sync
+	mountpoint -q "$mnt" && umount -l "$mnt" || true
+	rmdir "$mnt" 2>/dev/null || true
+}
+
+if [ "${1:-}" = --list-disks ]; then
+	list_disks
+	exit 0
+fi
+
+disk="" user="" fullname="" password_file="" hostname="" timezone=UTC autologin=${LL_AUTOLOGIN_DEFAULT:-0} confirm="" image=""
+while [ $# -gt 0 ]; do
+	case $1 in
+	--disk) disk=$2; shift 2 ;;
+	--user) user=$2; shift 2 ;;
+	--fullname) fullname=$2; shift 2 ;;
+	--password-file) password_file=$2; shift 2 ;;
+	--hostname) hostname=$2; shift 2 ;;
+	--timezone) timezone=$2; shift 2 ;;
+	--autologin) autologin=1; shift ;;
+	--no-autologin) autologin=0; shift ;;
+	--image) image=$2; shift 2 ;;
+	--confirm) confirm=$2; shift 2 ;;
+	*) die "unknown option $1" ;;
+	esac
+done
+
+[ "$(id -u)" = 0 ] || die "the installer must run as root"
+[ -n "$LL_IMAGE_REF" ] || die "this build of $LL_NAME was not published to a registry, so it cannot be installed (build it with GitHub Actions from the linuxlive template)"
+[ -n "$disk" ] || die "no disk chosen"
+[ "$confirm" = "$disk" ] || die "the disk was not confirmed; nothing was changed"
+printf '%s' "$user" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$' || die "the user name must be lowercase letters, digits, - and _ (up to 32)"
+case $user in root | live | liveuser | daemon | bin | sys | nobody) die "the user name $user is taken by the system" ;; esac
+printf '%s' "$hostname" | grep -Eq '^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$' || die "the computer name must be letters, digits and dashes"
+[ -f "/usr/share/zoneinfo/$timezone" ] || die "unknown time zone $timezone"
+[ -s "$password_file" ] || die "no password given"
+case $fullname in *:* | *$'\n'* | *\'*) die "the name may not contain : ' or a line break" ;; esac
+problem=$(disk_problem "$disk")
+[ "$problem" = ok ] || die "$disk cannot be used: $problem"
+source=${image:-$LL_IMAGE_REF}
+progress 2 "Checking the internet connection"
+# Up to 90 seconds: a network can still be coming up (Wi-Fi after login, or
+# the unattended test install early in the boot).
+online=""
+for _ in $(seq 1 18); do
+	if curl -sS --max-time 10 -o /dev/null "https://${source%%/*}/v2/" 2>/dev/null; then
+		online=1
+		break
+	fi
+	sleep 5
+done
+[ -n "$online" ] || die "no internet connection: installing $LL_NAME downloads it (about 3 GB). Connect to a network and try again"
+
+trap cleanup EXIT
+progress 4 "Erasing $disk and downloading $LL_NAME (about 3 GB)"
+# The download is most of the work; move the bar along while it runs.
+log=$(mktemp)
+# bootc re-runs itself as SELinux's install_t, which a live session (and a
+# systemd service in it) may not enter; with this it sets the live session
+# permissive while it installs instead. The installed system is still labelled
+# from the image's policy and runs enforcing.
+BOOTC_SETENFORCE0_FALLBACK=1 bootc install to-disk --wipe --filesystem xfs --skip-fetch-check \
+	--source-imgref "docker://$source" --target-imgref "$LL_IMAGE_REF" "$disk" >"$log" 2>&1 &
+job=$!
+pct=4
+while kill -0 "$job" 2>/dev/null; do
+	sleep 5
+	[ "$pct" -ge 74 ] || pct=$((pct + 1))
+	progress "$pct" "Installing $LL_NAME: $(tail -n 1 "$log" | cut -c1-80)"
+done
+if ! wait "$job"; then
+	tail -n 15 "$log"
+	die "installing the system failed: $(grep -iE 'error' "$log" | tail -n 1 | cut -c1-200)"
+fi
+tail -n 5 "$log"
+
+progress 76 "Setting up the system"
+udevadm settle
+root=$(lsblk -bnpo PATH,SIZE,TYPE "$disk" | awk '$3 == "part"' | sort -k2 -n | tail -n 1 | awk '{print $1}')
+mnt=$(mktemp -d /tmp/linuxlive-root.XXXXXX)
+# bootc leaves the new root mounted read-only at /run/bootc/storage, and a
+# second mount of the same xfs shares that read-only mount ("source
+# write-protected"): unmount whatever bootc left first. If a writable mount
+# still fails, say why.
+findmnt -rno TARGET -S "$root" 2>/dev/null | sort -r | while read -r m; do umount "$m" 2>/dev/null || umount -l "$m" 2>/dev/null || true; done
+blockdev --setrw "$root" 2>/dev/null || true
+if ! mount -o rw "$root" "$mnt" 2>/dev/null || ! touch "$mnt/.linuxlive-rw" 2>/dev/null; then
+	mountpoint -q "$mnt" && umount "$mnt"
+	printf 'read-only flags: disk %s, partition %s\n' "$(blockdev --getro "$disk" 2>&1)" "$(blockdev --getro "$root" 2>&1)"
+	lsblk -o NAME,SIZE,RO,FSTYPE,MOUNTPOINTS "$disk" 2>&1
+	dmesg 2>/dev/null | tail -n 12
+	die "the installed system's partition $root could not be opened for writing"
+fi
+rm -f "$mnt/.linuxlive-rw"
+# Exactly ostree/deploy/<stateroot>/deploy/<id>.0: with composefs there is also
+# a .../backing/<id>.0, which has no /etc.
+deploy=""
+for d in "$mnt"/ostree/deploy/*/deploy/*.0; do
+	if [ -d "$d/etc" ]; then
+		deploy=$d
+		break
+	fi
+done
+[ -n "$deploy" ] || die "the installed system was not found on $root"
+var=$(dirname "$(dirname "$deploy")")/var
+
+# The live session's apps (Flatpaks are added to the ISO, not to the image).
+if [ -d /var/lib/flatpak ] && [ -n "$(ls -A /var/lib/flatpak 2>/dev/null)" ]; then
+	progress 80 "Copying the apps"
+	mkdir -p "$var/lib" || die "could not write to the installed system ($var)"
+	rm -rf "$var/lib/flatpak"
+	cp -a /var/lib/flatpak "$var/lib/flatpak" || die "copying the apps failed"
+fi
+
+progress 92 "Creating $user"
+# Files written into the new /etc get the SELinux label the policy gives that
+# path (the live system runs the same policy as the image).
+label() { ctx=$(matchpathcon -n "$1" 2>/dev/null) && chcon -h "$ctx" "$deploy$1" 2>/dev/null || true; }
+
+# No first-boot setup wizard: KDE's (plasma-setup, which creates a user of its
+# own) and GNOME's would run before linuxlive-firstboot's user exists. The
+# image is the live system's, so its unit names are found here and masked in
+# the new /etc.
+for dir in system user; do
+	for unit in /usr/lib/systemd/"$dir"/*plasma-setup* /usr/lib/systemd/"$dir"/*initial-setup*; do
+		[ -e "$unit" ] || continue
+		mkdir -p "$deploy/etc/systemd/$dir"
+		ln -sfn /dev/null "$deploy/etc/systemd/$dir/$(basename "$unit")"
+		label "/etc/systemd/$dir/$(basename "$unit")"
+		printf 'masked %s\n' "$(basename "$unit")"
+	done
+done
+printf '%s\n' "$hostname" >"$deploy/etc/hostname" || die "could not write to the installed system's /etc"
+label /etc/hostname
+ln -sfn "../usr/share/zoneinfo/$timezone" "$deploy/etc/localtime"
+label /etc/localtime
+# Read by linuxlive-firstboot at the first start, then deleted.
+mkdir -p "$deploy/etc/linuxlive"
+umask 077
+{
+	printf "LL_USER='%s'\n" "$user"
+	printf "LL_FULLNAME='%s'\n" "$fullname"
+	printf "LL_PASSWORD_HASH='%s'\n" "$(head -n 1 "$password_file" | openssl passwd -6 -stdin)"
+	printf "LL_AUTOLOGIN='%s'\n" "$autologin"
+} >"$deploy/etc/linuxlive/firstboot.env" || die "could not save the user's details for the first start"
+label /etc/linuxlive
+label /etc/linuxlive/firstboot.env
+
+progress 98 "Finishing"
+cleanup
+mnt=""
+trap - EXIT
+progress 100 "Done"

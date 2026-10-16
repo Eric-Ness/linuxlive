@@ -77,10 +77,11 @@ desktops:
       packages: [cinnamon, cinnamon-control-center, lightdm, slick-greeter, xorg-x11-drv-libinput, gnome-terminal, gnome-software, flatpak]
       livesys_session: cinnamon
 
-# Apps are installed from Flathub, so one ID works on every base.
+# Apps are installed from Flathub, so one ID works on every base. kiosk_args
+# go after the app when it runs in kiosk mode.
 apps:
-  firefox: {name: Firefox, flatpak: org.mozilla.firefox}
-  chromium: {name: Chromium, flatpak: org.chromium.Chromium}
+  firefox: {name: Firefox, flatpak: org.mozilla.firefox, kiosk_args: [--kiosk]}
+  chromium: {name: Chromium, flatpak: org.chromium.Chromium, kiosk_args: [--kiosk, --noerrdialogs]}
   thunderbird: {name: Thunderbird, flatpak: org.mozilla.Thunderbird}
   libreoffice: {name: LibreOffice, flatpak: org.libreoffice.LibreOffice}
   vlc: {name: VLC, flatpak: org.videolan.VLC}
@@ -99,3 +100,72 @@ apps:
   gcompris: {name: GCompris, flatpak: org.kde.gcompris}
   tuxpaint: {name: Tux Paint, flatpak: org.tuxpaint.Tuxpaint}
   flatseal: {name: Flatseal, flatpak: com.github.tchx84.Flatseal}
+
+# Languages a spec can set (settings.language), as glibc locales. Ubuntu's
+# translations come in language packs: language-pack-<ubuntu> for the base,
+# -gnome- for GNOME and GTK programs (GNOME and Cinnamon), -kde- for KDE, and
+# cinnamon-l10n for Cinnamon itself. Fedora's come with the programs; its
+# langpacks-<fedora> adds the locale, fonts and spelling. ubuntu_fonts are
+# for scripts Ubuntu's desktops do not bring fonts for.
+languages:
+  en_US: {label: English (United States), ubuntu: en, fedora: en}
+  en_GB: {label: English (United Kingdom), ubuntu: en, fedora: en_GB}
+  en_CA: {label: English (Canada), ubuntu: en, fedora: en}
+  en_AU: {label: English (Australia), ubuntu: en, fedora: en}
+  de_DE: {label: Deutsch (Deutschland), ubuntu: de, fedora: de}
+  de_AT: {label: Deutsch (Österreich), ubuntu: de, fedora: de}
+  de_CH: {label: Deutsch (Schweiz), ubuntu: de, fedora: de}
+  fr_FR: {label: Français (France), ubuntu: fr, fedora: fr}
+  fr_CA: {label: Français (Canada), ubuntu: fr, fedora: fr}
+  es_ES: {label: Español (España), ubuntu: es, fedora: es}
+  es_MX: {label: Español (México), ubuntu: es, fedora: es}
+  it_IT: {label: Italiano, ubuntu: it, fedora: it}
+  pt_BR: {label: Português (Brasil), ubuntu: pt, fedora: pt_BR}
+  pt_PT: {label: Português (Portugal), ubuntu: pt, fedora: pt}
+  nl_NL: {label: Nederlands, ubuntu: nl, fedora: nl}
+  sv_SE: {label: Svenska, ubuntu: sv, fedora: sv}
+  da_DK: {label: Dansk, ubuntu: da, fedora: da}
+  nb_NO: {label: Norsk bokmål, ubuntu: nb, fedora: nb}
+  fi_FI: {label: Suomi, ubuntu: fi, fedora: fi}
+  pl_PL: {label: Polski, ubuntu: pl, fedora: pl}
+  cs_CZ: {label: Čeština, ubuntu: cs, fedora: cs}
+  tr_TR: {label: Türkçe, ubuntu: tr, fedora: tr}
+  uk_UA: {label: Українська, ubuntu: uk, fedora: uk}
+  ru_RU: {label: Русский, ubuntu: ru, fedora: ru}
+  ja_JP: {label: 日本語, ubuntu: ja, fedora: ja, ubuntu_fonts: [fonts-noto-cjk]}
+  zh_CN: {label: 中文（简体）, ubuntu: zh-hans, fedora: zh_CN, ubuntu_fonts: [fonts-noto-cjk]}
+  ko_KR: {label: 한국어, ubuntu: ko, fedora: ko, ubuntu_fonts: [fonts-noto-cjk]}
+
+# Keyboard layouts a spec can set (settings.keyboard), as XKB layout names.
+keyboards:
+  us: English (US)
+  gb: English (UK)
+  ie: Irish
+  de: German
+  ch: Swiss German
+  fr: French
+  be: Belgian
+  ca: French (Canada)
+  es: Spanish
+  latam: Spanish (Latin American)
+  it: Italian
+  pt: Portuguese
+  br: Portuguese (Brazil)
+  nl: Dutch
+  se: Swedish
+  dk: Danish
+  "no": Norwegian  # quoted: YAML reads a bare no as false
+  fi: Finnish
+  pl: Polish
+  cz: Czech
+  tr: Turkish
+  ua: Ukrainian
+  ru: Russian
+  jp: Japanese
+  kr: Korean
+
+# Kiosk mode (kiosk in a spec): Cage, a Wayland compositor that shows one
+# app full screen, started on the first console instead of the login screen.
+kiosk:
+  ubuntu: [cage, xwayland]
+  fedora: [cage, xorg-x11-server-Xwayland]

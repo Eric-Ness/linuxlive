@@ -1,0 +1,20 @@
+# Example spec: a Fedora 44 kiosk that starts straight into GCompris, full
+# screen, in Italian. CI builds and boots it to check kiosk mode on Fedora with
+# an app that needs no network.
+schema_version: 1
+name: Gioco Linux
+version: "0.1"
+base: fedora
+desktop: kde
+apps:
+  - gcompris
+branding:
+  wallpaper: assets/wallpaper.png
+  logo: assets/logo.png
+  accent_color: "#c2185b"
+settings:
+  language: it_IT
+  keyboard: it
+  timezone: Europe/Rome
+kiosk:
+  app: gcompris

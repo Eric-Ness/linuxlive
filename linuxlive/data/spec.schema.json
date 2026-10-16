@@ -65,6 +65,83 @@
         }
       }
     },
+    "settings": {
+      "description": "How the system is set up: language, keyboard, time zone, computer name, login and the menu.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "language": {
+          "description": "The system's language and formats, as a locale from the catalog, for example de_DE.",
+          "type": "string",
+          "pattern": "^[a-z]{2,3}_[A-Z]{2}$"
+        },
+        "keyboard": {
+          "description": "Keyboard layout, as an XKB layout from the catalog, for example de.",
+          "type": "string",
+          "pattern": "^[a-z]{2,5}$"
+        },
+        "timezone": {
+          "description": "Time zone, as a name from the tz database, for example Europe/Berlin.",
+          "type": "string",
+          "maxLength": 40,
+          "pattern": "^(UTC|[A-Z][A-Za-z_-]+(/[A-Z0-9][A-Za-z0-9_+-]+){1,2})$"
+        },
+        "hostname": {
+          "description": "The computer's name on the network. Defaults to the id.",
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+        },
+        "autologin": {
+          "description": "Installed systems log their user in without a password (the installer's option starts ticked). The live session always does.",
+          "type": "boolean"
+        },
+        "hidden_apps": {
+          "description": "Menu entries to hide, by desktop file name without .desktop, for example org.gnome.Tour.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 50,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"}
+        }
+      }
+    },
+    "firefox": {
+      "description": "Firefox's home page and bookmarks, set as policies for everyone. Needs firefox in apps.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "homepage": {
+          "description": "The page Firefox starts with and its Home button opens.",
+          "$ref": "#/$defs/web_address"
+        },
+        "bookmarks": {
+          "description": "Bookmarks on the bookmarks toolbar, in order.",
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "url"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[^\\u0000-\\u001f]+$"},
+              "url": {"$ref": "#/$defs/web_address"}
+            }
+          }
+        }
+      }
+    },
+    "kiosk": {
+      "description": "Kiosk mode: the computer starts straight into one app, full screen, with no desktop around it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["app"],
+      "properties": {
+        "app": {
+          "description": "The app, one of apps.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        }
+      }
+    },
     "packages": {
       "description": "Packages from the base's own archive (Ubuntu's apt or Fedora's dnf), installed into the image.",
       "type": "array",
@@ -149,6 +226,12 @@
     }
   },
   "$defs": {
+    "web_address": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "An http or https address.",
+      "pattern": "^https?://[^\\s\"'<>\\\\`{}|^]+$"
+    },
     "script_list": {
       "type": "array",
       "maxItems": 20,

@@ -2,7 +2,8 @@
 # Unattended install for linuxlive's QEMU tests (scripts/boottest.py, mode
 # install). It only runs when QEMU passes -fw_cfg name=opt/linuxlive/autoinstall
 # with "disk=...;user=...;password=...;hostname=...;timezone=...", and on
-# Fedora "image=..." (the run's registry image to install from); on real
+# Fedora "image=..." (the run's registry image to install from), and
+# "autologin=spec" to leave automatic login to the spec's default; on real
 # hardware, and in VMs started any other way, it exits without doing anything.
 # It reports to the first serial port and powers the machine off.
 flag=/sys/firmware/qemu_fw_cfg/by_name/opt/linuxlive/autoinstall/raw
@@ -16,10 +17,13 @@ say LINUXLIVE_INSTALL_START
 pw=$(mktemp)
 value password >"$pw"
 image=$(value image)
-# shellcheck disable=SC2046 # $image is one word or none
+# Log in automatically, as the boot tests need, unless the spec's own default is under test.
+autologin=--autologin
+if [ "$(value autologin)" = spec ]; then autologin=""; fi
+# shellcheck disable=SC2046,SC2086 # $image and $autologin are one word or none
 if /usr/libexec/linuxlive/install-to-disk --disk "$(value disk)" --confirm "$(value disk)" ${image:+--image "$image"} \
 	--user "$(value user)" --fullname "linuxlive test" --password-file "$pw" \
-	--hostname "$(value hostname)" --timezone "$(value timezone)" --autologin >/tmp/linuxlive-install.log 2>&1; then
+	--hostname "$(value hostname)" --timezone "$(value timezone)" $autologin >/tmp/linuxlive-install.log 2>&1; then
 	say LINUXLIVE_INSTALLED
 else
 	say "LINUXLIVE_FACT install_error=$(grep '^ERROR ' /tmp/linuxlive-install.log | tail -n 1 | cut -c7-)"

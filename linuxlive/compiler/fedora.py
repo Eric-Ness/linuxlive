@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from linuxlive.compiler import options
 from linuxlive.compiler.common import add_grub_configs, add_install_launcher, header_comment
 from linuxlive.compiler.context import BuildContext
 from linuxlive.compiler.extras import build_step, packages_step
@@ -62,7 +63,7 @@ FROM {plan.base_image}
 RUN set -eux; \\
     dnf -y install {packages}; \\
     dnf clean all
-{desktop}{debrand}{installer}{packages_step(plan)}
+{desktop}{debrand}{installer}{options.packages_step(plan)}{packages_step(plan)}
 COPY rootfs/ /
 
 # Keep a copy of the signed Secure Boot chain where the ISO assembler looks for it.

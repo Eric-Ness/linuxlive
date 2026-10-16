@@ -6,7 +6,7 @@ import colorsys
 import re
 from dataclasses import dataclass
 
-from linuxlive.catalog import App, Base, Catalog, Desktop, DesktopVariant
+from linuxlive.catalog import App, Base, Catalog, Desktop, DesktopVariant, Language
 from linuxlive.compiler.context import CompileError
 from linuxlive.png import image_info
 from linuxlive.spec import Spec
@@ -44,6 +44,14 @@ class Plan:
     wallpaper_file: str
     accent_rgb: tuple[int, int, int] | None
     gnome_accent: str | None
+    # Settings (spec.settings) resolved against the catalog.
+    language: Language | None = None
+    keyboard: str | None = None
+    hostname: str = ""
+    kiosk_app: App | None = None
+    kiosk_packages: tuple[str, ...] = ()
+    # The CPU architecture, as Flatpak names it.
+    flatpak_arch: str = "x86_64"
 
     @property
     def wallpaper_path(self) -> str:
@@ -141,4 +149,9 @@ def plan_build(spec: Spec, catalog: Catalog) -> Plan:
         wallpaper_file="wallpaper.png" if image_info(spec.branding.wallpaper)[0] == "png" else "wallpaper.jpg",
         accent_rgb=parse_hex(accent) if accent else None,
         gnome_accent=nearest_gnome_accent(accent) if accent and spec.desktop == "gnome" else None,
+        language=catalog.languages[spec.settings.language] if spec.settings.language else None,
+        keyboard=spec.settings.keyboard,
+        hostname=spec.settings.hostname or spec.id,
+        kiosk_app=catalog.apps[spec.kiosk] if spec.kiosk else None,
+        kiosk_packages=catalog.kiosk_packages.get(spec.base, ()) if spec.kiosk else (),
     )

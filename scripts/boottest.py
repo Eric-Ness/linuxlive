@@ -73,7 +73,7 @@ def kvm_usable() -> bool:
 
 
 def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, memory: int, cpus: int, kvm: bool,
-                 disk: Path | None = None, autoinstall_image: str = "") -> list[str]:
+                 disk: Path | None = None, autoinstall_image: str = "", autoinstall_autologin: str = "on") -> list[str]:
     firmware, media = MODES[mode]
     machine = "q35,smm=on" if firmware == "uefi-sb" else "q35"
     cmd = [
@@ -112,6 +112,9 @@ def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, m
     if mode == "install":
         # Fedora installs from a registry image: the run's own, given here.
         settings = AUTOINSTALL + (f";image={autoinstall_image}" if autoinstall_image else "")
+        # "spec": the installer's own default (the spec's settings.autologin) decides.
+        if autoinstall_autologin == "spec":
+            settings += ";autologin=spec"
         if "," in settings:
             raise SystemExit("autoinstall settings may not contain commas (QEMU's -fw_cfg string)")
         cmd += ["-fw_cfg", f"name=opt/linuxlive/autoinstall,string={settings}"]
@@ -235,7 +238,7 @@ def run(args) -> int:
     session_timeout = args.session_timeout * scale
     settle = args.settle * scale
     cmd = qemu_command(Path(args.iso).resolve(), args.mode, workdir, serial, qmp_path, args.memory, args.cpus, kvm,
-                       Path(args.disk).resolve() if args.disk else None, args.autoinstall_image or "")
+                       Path(args.disk).resolve() if args.disk else None, args.autoinstall_image or "", args.autoinstall_autologin)
     print(f"[boottest] {args.mode}: {'KVM' if kvm else 'TCG (no KVM)'}; boot timeout {boot_timeout}s", flush=True)
     print("[boottest] " + " ".join(cmd), flush=True)
 
@@ -359,6 +362,8 @@ def main() -> int:
     parser.add_argument("--disk", help="qcow2 disk for the install and installed-* modes")
     parser.add_argument("--install-timeout", type=int, default=1800, help="seconds from the install's start to its end (KVM)")
     parser.add_argument("--autoinstall-image", help="registry image the unattended install installs from (Fedora)")
+    parser.add_argument("--autoinstall-autologin", choices=("on", "spec"), default="on",
+                        help="on: the install logs in automatically; spec: the spec's settings.autologin decides")
     return run(parser.parse_args())
 
 

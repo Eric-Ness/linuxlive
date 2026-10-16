@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
@@ -56,6 +56,19 @@ class App:
     id: str
     name: str
     flatpak: str
+    # Arguments after the app in kiosk mode (Firefox's --kiosk).
+    kiosk_args: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Language:
+    """A locale a spec can set, and where each base gets its translations."""
+
+    id: str
+    label: str
+    ubuntu: str
+    fedora: str
+    ubuntu_fonts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -63,6 +76,11 @@ class Catalog:
     bases: dict[str, Base]
     desktops: dict[str, Desktop]
     apps: dict[str, App]
+    languages: dict[str, Language] = field(default_factory=dict)
+    # XKB layout -> label.
+    keyboards: dict[str, str] = field(default_factory=dict)
+    # Base -> the packages kiosk mode adds.
+    kiosk_packages: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def variant(self, desktop: str, base: str) -> DesktopVariant | None:
         return self.desktops[desktop].variants.get(base)
@@ -133,10 +151,25 @@ def parse_catalog(raw: dict) -> Catalog:
     apps = {}
     for key, a in (raw.get("apps") or {}).items():
         where = f"apps.{key}"
-        apps[key] = App(id=key, name=_require(a, "name", where), flatpak=_require(a, "flatpak", where))
+        apps[key] = App(id=key, name=_require(a, "name", where), flatpak=_require(a, "flatpak", where),
+                        kiosk_args=_strings(a.get("kiosk_args"), f"{where}.kiosk_args"))
+    languages = {}
+    for key, lang in (raw.get("languages") or {}).items():
+        where = f"languages.{key}"
+        languages[key] = Language(
+            id=key,
+            label=_require(lang, "label", where),
+            ubuntu=_require(lang, "ubuntu", where),
+            fedora=_require(lang, "fedora", where),
+            ubuntu_fonts=_strings(lang.get("ubuntu_fonts"), f"{where}.ubuntu_fonts"),
+        )
+    keyboards = raw.get("keyboards") or {}
+    if not isinstance(keyboards, dict) or not all(isinstance(k, str) and isinstance(v, str) and v for k, v in keyboards.items()):
+        raise CatalogError("keyboards must map XKB layouts to labels")
+    kiosk = {base_id: _strings(names, f"kiosk.{base_id}") for base_id, names in (raw.get("kiosk") or {}).items()}
     if not bases or not desktops:
         raise CatalogError("catalog needs at least one base and one desktop")
-    return Catalog(bases=bases, desktops=desktops, apps=apps)
+    return Catalog(bases=bases, desktops=desktops, apps=apps, languages=languages, keyboards=dict(keyboards), kiosk_packages=kiosk)
 
 
 @lru_cache(maxsize=1)

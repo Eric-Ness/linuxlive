@@ -1,0 +1,28 @@
+# Example spec: Ubuntu 26.04 with GNOME, set up for a Spanish classroom. CI
+# builds and boots it to check every setting: language, keyboard, time zone,
+# computer name, automatic login, hidden menu entries and Firefox's policies.
+schema_version: 1
+name: Aula Linux
+version: "0.1"
+base: ubuntu
+desktop: gnome
+apps:
+  - firefox
+branding:
+  wallpaper: assets/wallpaper.png
+  logo: assets/logo.png
+  accent_color: "#c2185b"
+settings:
+  language: es_ES
+  keyboard: es
+  timezone: Europe/Madrid
+  hostname: aula-1
+  autologin: true
+  hidden_apps:
+    - yelp
+    - org.gnome.Ptyxis
+firefox:
+  homepage: https://linuxlive.com/
+  bookmarks:
+    - name: linuxlive Library
+      url: https://linuxlive.com/library/

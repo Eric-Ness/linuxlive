@@ -20,12 +20,16 @@ BACKEND = "/usr/libexec/linuxlive/install-to-disk"
 def branding():
     values = {}
     try:
-        out = subprocess.run(["bash", "-c", ". /usr/lib/linuxlive/branding.env; printf '%s\\n%s\\n%s\\n' \"$LL_NAME\" \"$LL_ID\" \"$LL_BASE\""],
+        out = subprocess.run(["bash", "-c", ". /usr/lib/linuxlive/branding.env; printf '%s\\n%s\\n%s\\n%s\\n%s\\n' "
+                              "\"$LL_NAME\" \"$LL_ID\" \"$LL_BASE\" \"${LL_HOSTNAME:-$LL_ID}\" \"${LL_AUTOLOGIN_DEFAULT:-0}\""],
                              capture_output=True, text=True, check=True).stdout.split("\n")
-        values = {"name": out[0], "id": out[1], "base": out[2]}
+        values = {"name": out[0], "id": out[1], "base": out[2], "hostname": out[3], "autologin": out[4]}
     except (OSError, subprocess.CalledProcessError, IndexError):
         pass
-    return values.get("name") or "linuxlive", values.get("id") or "linuxlive", values.get("base") or ""
+    name, id_ = values.get("name") or "linuxlive", values.get("id") or "linuxlive"
+    # The spec's settings: the computer name, and whether to log in automatically.
+    return {"name": name, "id": id_, "base": values.get("base") or "",
+            "hostname": values.get("hostname") or id_, "autologin": values.get("autologin") == "1"}
 
 
 def disks():
@@ -61,7 +65,9 @@ def timezones():
 
 class Installer(Gtk.Window):
     def __init__(self):
-        self.name, self.id, self.base = branding()
+        spec = branding()
+        self.name, self.id, self.base = spec["name"], spec["id"], spec["base"]
+        self.default_hostname, self.default_autologin = spec["hostname"], spec["autologin"]
         super().__init__(title=f"Install {self.name}")
         self.set_default_size(560, 0)
         self.set_border_width(18)
@@ -103,12 +109,12 @@ class Installer(Gtk.Window):
         self.fullname.connect("changed", self.suggest_user)
         self.password = Gtk.Entry(visibility=False)
         self.password2 = Gtk.Entry(visibility=False)
-        self.hostname = Gtk.Entry(text=self.id)
+        self.hostname = Gtk.Entry(text=self.default_hostname)
         self.timezone = Gtk.ComboBoxText.new_with_entry()
         for tz in timezones():
             self.timezone.append_text(tz)
         self.timezone.get_child().set_text(current_timezone())
-        self.autologin = Gtk.CheckButton(label="Log in automatically")
+        self.autologin = Gtk.CheckButton(label="Log in automatically", active=self.default_autologin)
         rows = [("Disk to erase", self.disk), ("Your name", self.fullname), ("User name", self.user),
                 ("Password", self.password), ("Password again", self.password2),
                 ("Computer name", self.hostname), ("Time zone", self.timezone), ("", self.autologin)]
@@ -195,8 +201,7 @@ class Installer(Gtk.Window):
         cmd = ["sudo", "-n", BACKEND, "--disk", disk, "--confirm", disk, "--user", self.user.get_text(),
                "--fullname", self.fullname.get_text(), "--password-file", pwfile,
                "--hostname", self.hostname.get_text(), "--timezone", self.timezone.get_child().get_text()]
-        if self.autologin.get_active():
-            cmd.append("--autologin")
+        cmd.append("--autologin" if self.autologin.get_active() else "--no-autologin")
 
         def run():
             error = None

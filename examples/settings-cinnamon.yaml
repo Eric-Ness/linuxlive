@@ -1,0 +1,19 @@
+# Example spec: Fedora 44 with Cinnamon, in Brazilian Portuguese. CI builds and
+# boots it to check the settings on Cinnamon, which types through X11.
+schema_version: 1
+name: Varanda Linux
+version: "0.1"
+base: fedora
+desktop: cinnamon
+apps:
+  - vlc
+branding:
+  wallpaper: assets/wallpaper.png
+  logo: assets/logo.png
+  accent_color: "#c2185b"
+settings:
+  language: pt_BR
+  keyboard: br
+  timezone: America/Sao_Paulo
+  hidden_apps:
+    - org.gnome.Terminal

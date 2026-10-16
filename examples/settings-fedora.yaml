@@ -1,0 +1,24 @@
+# Example spec: Fedora 44 with KDE Plasma, in German. CI builds and boots it
+# to check every setting on Fedora and on Plasma.
+schema_version: 1
+name: Werkbank Linux
+version: "0.1"
+base: fedora
+desktop: kde
+apps:
+  - firefox
+branding:
+  wallpaper: assets/wallpaper.png
+  logo: assets/logo.png
+  accent_color: "#c2185b"
+settings:
+  language: de_DE
+  keyboard: de
+  timezone: Europe/Berlin
+  hostname: werkbank
+  autologin: true
+  hidden_apps:
+    - org.kde.konsole
+    - org.kde.kinfocenter
+firefox:
+  homepage: https://linuxlive.com/learn/

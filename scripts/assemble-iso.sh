@@ -83,7 +83,8 @@ in_image() {
 		--volume "$root:/target" "$image" -c "$1"
 }
 
-# 2. Preinstall the spec's Flatpak apps into the live system.
+# 2. Preinstall the spec's Flatpak apps into the live system, with the
+#    translations of the spec's language (settings.language), if it has one.
 if [[ -n ${LL_FLATPAKS:-} ]]; then
 	log "installing Flatpaks: $LL_FLATPAKS"
 	mkdir -p "$root/var/lib/flatpak"
@@ -91,6 +92,7 @@ if [[ -n ${LL_FLATPAKS:-} ]]; then
 		--volume "$root/var/lib/flatpak:/var/lib/flatpak" "$image" /bin/sh -euc "
 		flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 		flatpak remote-modify --system --enable --no-filter flathub
+		${LL_FLATPAK_LANGUAGES:+flatpak config --system --set languages $LL_FLATPAK_LANGUAGES}
 		flatpak install --system --noninteractive --assumeyes flathub $LL_FLATPAKS
 		flatpak list --system --app --columns=application"
 fi
@@ -109,7 +111,7 @@ if [[ $LL_BASE == ubuntu ]]; then
 	ln -sfn /etc/machine-id "$root/var/lib/dbus/machine-id"
 	rm -f "$root"/var/cache/apt/*.bin
 fi
-printf '%s\n' "$LL_ID" >"$root/etc/hostname"
+printf '%s\n' "${LL_HOSTNAME:-$LL_ID}" >"$root/etc/hostname"
 printf '127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\n' >"$root/etc/hosts"
 if [[ -x $root/usr/lib/systemd/systemd-resolved ]]; then
 	ln -sfn ../run/systemd/resolve/stub-resolv.conf "$root/etc/resolv.conf"

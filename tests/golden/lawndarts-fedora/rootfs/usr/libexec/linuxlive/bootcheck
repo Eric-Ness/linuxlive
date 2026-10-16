@@ -139,6 +139,40 @@ if [ -e "$yaru/view-app-grid-ubuntu-symbolic.svg" ]; then
 		fact dock_show_apps_icon ubuntu
 	fi
 fi
+# The spec's settings (settings, firefox, kiosk), as the system has them.
+# shellcheck disable=SC2154 # LL_* settings come from /usr/lib/linuxlive/branding.env
+settings=$(. /usr/lib/linuxlive/branding.env && printf '%s\n%s\n%s\n' "${LL_HIDDEN_APPS:-}" "${LL_KIOSK_APP:-}" "${LL_KIOSK_USER:-}")
+hidden_apps=$(printf '%s\n' "$settings" | sed -n 1p)
+kiosk_app=$(printf '%s\n' "$settings" | sed -n 2p)
+kiosk_user=$(printf '%s\n' "$settings" | sed -n 3p)
+fact hostname "$(cat /proc/sys/kernel/hostname 2>/dev/null)"
+fact system_locale "$(sed -n 's/^LANG=//p' /etc/locale.conf /etc/default/locale 2>/dev/null | tr -d '"' | head -n 1)"
+fact timezone "$(readlink -f /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||')"
+fact keyboard_system "$(localectl status 2>/dev/null | sed -n 's/^ *X11 Layout: *//p' | head -n 1)"
+for entry in $hidden_apps; do
+	file=/usr/share/applications/$entry.desktop
+	if [ ! -f "$file" ]; then
+		state=absent
+	elif awk '/^\[/ { group = $0 } group == "[Desktop Entry]" && /^NoDisplay[ \t]*=[ \t]*true/ { found = 1 } END { exit !found }' "$file"; then
+		state=hidden
+	else
+		state=shown
+	fi
+	fact hidden_app "$entry=$state"
+done
+for policies in /var/lib/flatpak/extension/org.mozilla.firefox.systemconfig/*/stable/policies/policies.json; do
+	[ -f "$policies" ] && fact firefox_policies "$(sha256sum "$policies" | cut -d' ' -f1)"
+done
+# Who an installed system logs in automatically, from its login screen's settings.
+autologin=$(
+	{
+		awk -F= '/^\[daemon\]/ { d = 1; next } /^\[/ { d = 0 } d && $1 == "AutomaticLoginEnable" { e = tolower($2) } d && $1 == "AutomaticLogin" { u = $2 }
+			END { if (e == "true" && u != "") print u }' /etc/gdm3/custom.conf /etc/gdm/custom.conf 2>/dev/null
+		cat /etc/sddm.conf.d/*.conf /etc/plasmalogin.conf.d/*.conf 2>/dev/null | sed -n 's/^User=//p'
+		cat /etc/lightdm/lightdm.conf.d/*.conf 2>/dev/null | sed -n 's/^autologin-user=//p'
+	} | sed '/^$/d' | sort -u | tr '\n' ' ' | sed 's/ $//'
+)
+fact autologin_users "${autologin:-none}"
 say LINUXLIVE_BOOTED
 
 # The icons a user's Plasma application launchers show, from Plasma's saved
@@ -260,6 +294,137 @@ kde_launcher_icons() {
 	printf '%s' "${found:-none}"
 }
 
+# The layout the session types with: GNOME's own list, Plasma's kxkbrc, the
+# X server's (Cinnamon) or Cage's (kiosk mode, from its environment).
+session_keyboard() {
+	user=$1 shell=$2 pid=$3
+	home=$(getent passwd "$user" | cut -d: -f6)
+	case $shell in
+	gnome-shell)
+		runuser -u "$user" -- env HOME="$home" XDG_CURRENT_DESKTOP="$(environ_of "$pid" XDG_CURRENT_DESKTOP)" \
+			gsettings get org.gnome.desktop.input-sources sources 2>/dev/null | sed -n "s/^\[('xkb', '\([^']*\)').*/\1/p"
+		;;
+	plasmashell)
+		for rc in "$home/.config/kxkbrc" /etc/xdg/kxkbrc; do
+			layouts=$(sed -n 's/^LayoutList=//p' "$rc" 2>/dev/null | head -n 1)
+			if [ -n "$layouts" ]; then
+				printf '%s' "${layouts%%,*}"
+				break
+			fi
+		done
+		;;
+	cinnamon)
+		runuser -u "$user" -- env DISPLAY="$(environ_of "$pid" DISPLAY)" XAUTHORITY="$(environ_of "$pid" XAUTHORITY)" \
+			setxkbmap -query 2>/dev/null | sed -n 's/^layout: *//p' | cut -d, -f1
+		;;
+	cage) environ_of "$pid" XKB_DEFAULT_LAYOUT ;;
+	esac
+}
+
+# One variable from a process's environment.
+environ_of() {
+	tr '\0' '\n' <"/proc/$1/environ" 2>/dev/null | sed -n "s/^$2=//p" | head -n 1
+}
+
+# Whether the desktop shell has its words in the session's language.
+shell_translation() {
+	lang=$1 shell=$2
+	if [ -z "$lang" ]; then
+		printf none
+		return
+	fi
+	case $shell in
+	gnome-shell | plasmashell | cinnamon) domain=$shell ;;
+	*)
+		printf none
+		return
+		;;
+	esac
+	short=${lang%%.*}
+	for dir in /usr/share/locale /usr/share/locale-langpack; do
+		for code in "$short" "${short%%_*}"; do
+			if [ -f "$dir/$code/LC_MESSAGES/$domain.mo" ]; then
+				printf '%s' "$dir/$code/LC_MESSAGES/$domain.mo"
+				return
+			fi
+		done
+	done
+	printf missing
+}
+
+# The Flatpak apps running in a user's session.
+running_apps() {
+	uid=$(id -u "$1")
+	runuser -u "$1" -- env XDG_RUNTIME_DIR="/run/user/$uid" flatpak ps --columns=application 2>/dev/null |
+		sort -u | tr '\n' ' ' | sed 's/ $//'
+}
+
+# What Flathub's Firefox has open and bookmarked, from its profile: the
+# session file Firefox writes every few seconds (mozlz4: LZ4 with a header)
+# and its bookmarks database.
+firefox_state() {
+	home=$(getent passwd "$1" | cut -d: -f6)
+	python3 - "$home/.var/app/org.mozilla.firefox" <<'PY' 2>/dev/null
+import glob, json, os, shutil, sqlite3, sys, tempfile
+
+
+def lz4_block(src):
+    out, i = bytearray(), 0
+    while i < len(src):
+        token = src[i]
+        i += 1
+        n = token >> 4
+        if n == 15:
+            while True:
+                b = src[i]
+                i += 1
+                n += b
+                if b != 255:
+                    break
+        out += src[i:i + n]
+        i += n
+        if i >= len(src):
+            break
+        offset = src[i] | src[i + 1] << 8
+        i += 2
+        n = token & 15
+        if n == 15:
+            while True:
+                b = src[i]
+                i += 1
+                n += b
+                if b != 255:
+                    break
+        start = len(out) - offset
+        for k in range(n + 4):
+            out.append(out[start + k])
+    return bytes(out)
+
+
+root = sys.argv[1]
+for path in sorted(glob.glob(root + "/**/sessionstore-backups/recovery.jsonlz4", recursive=True)):
+    data = open(path, "rb").read()
+    if data[:8] != b"mozLz40\0":
+        continue
+    session = json.loads(lz4_block(data[12:]))
+    for window in session.get("windows", []):
+        for tab in window.get("tabs", []):
+            entries = tab.get("entries") or []
+            if entries:
+                print("open", entries[min(tab.get("index", 1), len(entries)) - 1].get("url", ""))
+for path in sorted(glob.glob(root + "/**/places.sqlite", recursive=True)):
+    work = tempfile.mkdtemp()
+    for suffix in ("", "-wal"):
+        if os.path.exists(path + suffix):
+            shutil.copy(path + suffix, os.path.join(work, "places.sqlite" + suffix))
+    db = sqlite3.connect(os.path.join(work, "places.sqlite"))
+    for (url,) in db.execute("SELECT p.url FROM moz_bookmarks b JOIN moz_places p ON b.fk = p.id WHERE b.type = 1 ORDER BY b.id"):
+        print("bookmark", url)
+    db.close()
+    shutil.rmtree(work, ignore_errors=True)
+PY
+}
+
 # Wait for an active graphical user session with its desktop shell running.
 deadline=$(($(date +%s) + 2700))
 while [ "$(date +%s)" -lt "$deadline" ]; do
@@ -271,7 +436,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		[ "$type" = wayland ] || [ "$type" = x11 ] || continue
 		user=$(loginctl show-session "$session" -p Name --value 2>/dev/null)
 		shell=""
-		for proc in gnome-shell plasmashell cinnamon; do
+		for proc in gnome-shell plasmashell cinnamon cage; do
 			if pgrep -u "$user" -x "$proc" >/dev/null 2>&1; then
 				shell=$proc
 			fi
@@ -309,6 +474,17 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 			journalctl -k -b --no-pager -o cat 2>/dev/null | grep 'avc:  denied' | head -n 5 |
 				while IFS= read -r line; do fact avc "$line"; done
 		fi
+		shell_pid=$(pgrep -u "$user" -x "$shell" 2>/dev/null | head -n 1)
+		session_lang=$(environ_of "$shell_pid" LANG)
+		fact session_lang "$session_lang"
+		fact shell_translation "$(shell_translation "$session_lang" "$shell")"
+		fact keyboard_session "$(session_keyboard "$user" "$shell" "$shell_pid")"
+		desktops=""
+		for name in gnome-shell plasmashell cinnamon; do
+			if pgrep -x "$name" >/dev/null 2>&1; then desktops="$desktops $name"; fi
+		done
+		desktops=${desktops# }
+		fact desktop_shells "${desktops:-none}"
 		say LINUXLIVE_SESSION_READY
 		ready=$(date +%s)
 		# A desktop shell can start and then crash (Cinnamon then shows its
@@ -340,6 +516,33 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 				while read -r name rc; do fact first_login_script "$name=$rc"; done <"$home/.local/state/linuxlive/first-login.log"
 			else
 				fact first_login_script none
+			fi
+		fi
+		if [ -n "$kiosk_app" ] && [ "$user" = "$kiosk_user" ]; then
+			# Kiosk mode: the app, full screen in Cage. Firefox writes its
+			# session file within about 15 seconds of opening a page.
+			apps="" tries=0
+			while [ "$tries" -lt 30 ]; do
+				apps=$(running_apps "$user")
+				case " $apps " in *" $kiosk_app "*) break ;; esac
+				tries=$((tries + 1))
+				sleep 2
+			done
+			fact kiosk_apps "${apps:-none}"
+			if [ "$kiosk_app" = org.mozilla.firefox ]; then
+				state="" tries=0
+				while [ "$tries" -lt 30 ]; do
+					state=$(firefox_state "$user")
+					if printf '%s\n' "$state" | grep -q '^open '; then break; fi
+					tries=$((tries + 1))
+					sleep 2
+				done
+				printf '%s\n' "$state" | while read -r kind value; do
+					case $kind in
+					open) fact firefox_open "$value" ;;
+					bookmark) fact firefox_bookmark "$value" ;;
+					esac
+				done
 			fi
 		fi
 		fact update_notifiers "$(update_notifiers "$user")"

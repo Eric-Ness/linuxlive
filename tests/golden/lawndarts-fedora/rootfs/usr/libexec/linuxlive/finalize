@@ -223,6 +223,85 @@ clean_up() {
 	fi
 }
 
+# The spec's settings (settings, kiosk): language, keyboard layout, time zone,
+# hidden menu entries and kiosk mode. The compiler wrote the desktops' own
+# files (GNOME's input sources, KDE's kxkbrc) and installed the language's
+# packages; this sets what only the finished image can.
+apply_language() {
+	locale="$LL_LANGUAGE.UTF-8"
+	if [ "$LL_BASE" = ubuntu ]; then
+		locale-gen "$locale"
+		update-locale LANG="$locale"
+	else
+		printf 'LANG="%s"\n' "$locale" >/etc/locale.conf
+	fi
+	short=$(printf '%s' "$LL_LANGUAGE" | tr '[:upper:]' '[:lower:]')
+	locale -a | tr '[:upper:]' '[:lower:]' | grep -qx "$short\.utf-\{0,1\}8" || die "the locale $locale is not available in the image"
+	log "language: $locale"
+}
+
+apply_keyboard() {
+	if [ "$LL_BASE" = ubuntu ]; then
+		# Read by the console (console-setup), X11 and systemd-localed.
+		printf 'XKBMODEL="pc105"\nXKBLAYOUT="%s"\nXKBVARIANT=""\nXKBOPTIONS=""\nBACKSPACE="guess"\n' "$LL_KEYBOARD" >/etc/default/keyboard
+	else
+		# The console keymap that systemd pairs with the layout, if any.
+		keymap=$(awk -v l="$LL_KEYBOARD" '!/^#/ && $2 == l && $4 == "-" {print $1; exit}' /usr/share/systemd/kbd-model-map 2>/dev/null)
+		{
+			[ -z "$keymap" ] || printf 'KEYMAP="%s"\n' "$keymap"
+			printf 'XKBLAYOUT="%s"\nXKBMODEL="pc105"\n' "$LL_KEYBOARD"
+		} >/etc/vconsole.conf
+		mkdir -p /etc/X11/xorg.conf.d
+		printf 'Section "InputClass"\n\tIdentifier "system-keyboard"\n\tMatchIsKeyboard "on"\n\tOption "XkbLayout" "%s"\n\tOption "XkbModel" "pc105"\nEndSection\n' \
+			"$LL_KEYBOARD" >/etc/X11/xorg.conf.d/00-keyboard.conf
+	fi
+	log "keyboard: $LL_KEYBOARD"
+}
+
+apply_timezone() {
+	[ -f "/usr/share/zoneinfo/$LL_TIMEZONE" ] || die "unknown time zone $LL_TIMEZONE"
+	ln -sfn "../usr/share/zoneinfo/$LL_TIMEZONE" /etc/localtime
+	if [ "$LL_BASE" = ubuntu ]; then printf '%s\n' "$LL_TIMEZONE" >/etc/timezone; fi
+	log "time zone: $LL_TIMEZONE"
+}
+
+# A menu entry stays installed but is not shown (NoDisplay=true). On Ubuntu
+# the package's file is diverted, so upgrades keep the hidden copy.
+hide_menu_entry() {
+	file=/usr/share/applications/$1.desktop
+	if [ ! -f "$file" ]; then
+		log "hidden_apps: $1 has no menu entry here (nothing to hide)"
+		return 0
+	fi
+	tmp=$(mktemp)
+	awk '/^\[/ { group = $0; print; if (group == "[Desktop Entry]") print "NoDisplay=true"; next }
+		group == "[Desktop Entry]" && /^NoDisplay[ \t]*=/ { next }
+		{ print }' "$file" >"$tmp"
+	if [ "$LL_BASE" = ubuntu ]; then
+		mkdir -p /usr/share/linuxlive/shown-menu-entries
+		dpkg-divert --quiet --local --rename --divert "/usr/share/linuxlive/shown-menu-entries/$1.desktop" --add "$file"
+	fi
+	install -m 0644 "$tmp" "$file"
+	rm -f "$tmp"
+	log "hidden_apps: $1 hidden from the menu"
+}
+
+apply_kiosk() {
+	command -v cage >/dev/null || die "kiosk mode needs cage, which is not installed"
+	systemctl enable linuxlive-kiosk.service
+	systemctl set-default graphical.target
+	log "kiosk mode: $LL_KIOSK_APP full screen, as $LL_KIOSK_USER"
+}
+
+apply_settings() {
+	if [ -n "$LL_LANGUAGE" ]; then apply_language; fi
+	if [ -n "$LL_KEYBOARD" ]; then apply_keyboard; fi
+	if [ -n "$LL_TIMEZONE" ]; then apply_timezone; fi
+	for entry in $LL_HIDDEN_APPS; do hide_menu_entry "$entry"; done
+	if [ -n "$LL_KIOSK_APP" ]; then apply_kiosk; fi
+	return 0
+}
+
 chmod 0755 /usr/libexec/linuxlive/*
 rewrite_os_release
 install_plymouth_theme
@@ -230,6 +309,7 @@ if [ "$LL_BASE" = ubuntu ]; then
 	debrand_ubuntu
 fi
 refresh_icon_cache
+apply_settings
 case "$LL_DESKTOP" in
 gnome) brand_gnome ;;
 kde) brand_kde ;;

@@ -41,7 +41,30 @@ repos:                                   # GitHub code at an exact commit
   - url: https://github.com/owner/name
     commit: 3f2a9c1e5b7d4e8a9c217d4e5f6a8b904c1d2e3f
     run: make install PREFIX=/usr
+# Optional settings (since v0.5.0): data only, nothing that runs.
+settings:
+  language: de_DE                   # a catalog locale: translations included
+  keyboard: de                      # a catalog XKB layout
+  timezone: Europe/Berlin
+  hostname: lab-pc                  # defaults to the id
+  autologin: true                   # installed systems log straight in
+  hidden_apps: [yelp]               # menu entries to hide (desktop file names)
+firefox:                            # needs firefox in apps
+  homepage: https://example.org/
+  bookmarks:
+    - {name: Example, url: https://example.org/}
+kiosk:
+  app: firefox                      # one of apps: starts full screen, no desktop
 ```
+
+Settings, Firefox's policies and kiosk mode are data, so a spec with only
+those (no scripts or repos) is one linuxlive.com's "Build it for me" builds.
+Kiosk mode runs the app in [Cage](https://github.com/cage-kiosk/cage) on the
+first console as the user `linuxlive-kiosk`; the boot menu's Install entry
+still starts the desktop, so the installer works. Hidden menu entries stay
+installed: on Ubuntu the package's file is diverted, so upgrades keep it
+hidden. Firefox's policies go where Flathub's Firefox reads them
+(`org.mozilla.firefox.systemconfig`).
 
 Extras run before linuxlive's own last build step (finalize), so branding,
 the installer and the boot checks still come last; CI checks every extra in
@@ -105,6 +128,17 @@ keep working.
 | `examples/testos-fedora.yaml` | TestOS | Fedora 44 | KDE Plasma |
 | `examples/lawndarts-ubuntu.yaml` | Lawn Darts Linux | Ubuntu 26.04 | Cinnamon |
 | `examples/lawndarts-fedora.yaml` | Lawn Darts Linux | Fedora 44 | Cinnamon |
+| `examples/settings-ubuntu.yaml` | Aula Linux (Spanish, every setting) | Ubuntu 26.04 | GNOME |
+| `examples/settings-fedora.yaml` | Werkbank Linux (German) | Fedora 44 | KDE Plasma |
+| `examples/settings-cinnamon.yaml` | Varanda Linux (Brazilian Portuguese) | Fedora 44 | Cinnamon |
+| `examples/kiosk-ubuntu.yaml` | Borne Linux (a Firefox kiosk, French) | Ubuntu 26.04 | GNOME underneath |
+| `examples/kiosk-fedora.yaml` | Gioco Linux (a GCompris kiosk, Italian) | Fedora 44 | KDE underneath |
+
+CI builds and boots all nine; it publishes only TestOS and Lawn Darts, which
+the site offers for download. The other five prove the settings in running
+systems: the session's language and translations, the layout each desktop
+types with, the time zone, hidden entries, Firefox's open page and bookmarks,
+and automatic login on the installed disk.
 
 The TestOS art is drawn by `scripts/make_test_assets.py`. The Lawn Darts
 wallpaper is a public domain photo of a lawn with an orange drain grate set

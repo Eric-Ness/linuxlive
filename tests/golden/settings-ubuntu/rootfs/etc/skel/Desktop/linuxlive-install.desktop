@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install Aula Linux
+Comment=Erase a disk and install Aula Linux on this computer
+Exec=/usr/libexec/linuxlive/installer
+Icon=linuxlive-logo
+Terminal=false
+Categories=System;

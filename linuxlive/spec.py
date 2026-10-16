@@ -79,6 +79,30 @@ class Scripts:
 
 
 @dataclass(frozen=True)
+class Settings:
+    """How the system is set up. None (or empty) keeps the base's own default."""
+
+    language: str | None = None
+    keyboard: str | None = None
+    timezone: str | None = None
+    hostname: str | None = None
+    autologin: bool = False
+    hidden_apps: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Bookmark:
+    name: str
+    url: str
+
+
+@dataclass(frozen=True)
+class Firefox:
+    homepage: str | None = None
+    bookmarks: tuple[Bookmark, ...] = ()
+
+
+@dataclass(frozen=True)
 class Spec:
     path: Path
     name: str
@@ -93,6 +117,10 @@ class Spec:
     files: tuple[ExtraFile, ...] = ()
     scripts: Scripts = Scripts()
     repos: tuple[Repo, ...] = ()
+    # Settings and no-code options: all data, nothing that runs.
+    settings: Settings = Settings()
+    firefox: Firefox | None = None
+    kiosk: str | None = None  # the app kiosk mode shows
 
     @property
     def runs_own_code(self) -> bool:
@@ -176,6 +204,9 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
             problems.append(f"repos: {repo.url} at {repo.commit} is listed twice")
         seen_repos.add(key)
 
+    settings, firefox, kiosk, option_problems = _resolve_options(raw, apps, catalog)
+    problems += option_problems
+
     if problems:
         raise SpecError(path, problems)
     accent = branding.get("accent_color")
@@ -196,7 +227,61 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
             first_login=script_lists["first-login"],
         ),
         repos=repos,
+        settings=settings,
+        firefox=firefox,
+        kiosk=kiosk,
     )
+
+
+@lru_cache(maxsize=1)
+def known_timezones() -> frozenset[str]:
+    """Time zone names from the tz database (the tzdata package where the system has none)."""
+    try:
+        import zoneinfo
+
+        return frozenset(zoneinfo.available_timezones())
+    except Exception:  # noqa: BLE001 - no tz database: the image build checks the name
+        return frozenset()
+
+
+def _resolve_options(raw: dict, apps: tuple[str, ...], catalog: Catalog) -> tuple[Settings, Firefox | None, str | None, list[str]]:
+    problems: list[str] = []
+    s = raw.get("settings") or {}
+    language, keyboard, timezone = s.get("language"), s.get("keyboard"), s.get("timezone")
+    if language and language not in catalog.languages:
+        problems.append(f"settings/language: {language!r} is not one linuxlive knows (known: {', '.join(sorted(catalog.languages))})")
+    if keyboard and keyboard not in catalog.keyboards:
+        problems.append(f"settings/keyboard: {keyboard!r} is not one linuxlive knows (known: {', '.join(sorted(catalog.keyboards))})")
+    zones = known_timezones()
+    if timezone and zones and timezone not in zones:
+        problems.append(f"settings/timezone: {timezone!r} is not a time zone; use a name like Europe/Berlin")
+    hidden = tuple(s.get("hidden_apps") or ())
+    for name in hidden:
+        if name.lower().startswith("linuxlive"):
+            problems.append(f"settings/hidden_apps: {name!r} is linuxlive's own")
+    settings = Settings(
+        language=language,
+        keyboard=keyboard,
+        timezone=timezone,
+        hostname=s.get("hostname"),
+        autologin=bool(s.get("autologin", False)),
+        hidden_apps=hidden,
+    )
+    firefox = None
+    if "firefox" in raw:
+        f = raw.get("firefox") or {}
+        firefox = Firefox(
+            homepage=f.get("homepage"),
+            bookmarks=tuple(Bookmark(name=b["name"], url=b["url"]) for b in f.get("bookmarks") or ()),
+        )
+        if "firefox" not in apps:
+            problems.append("firefox: the home page and bookmarks are Firefox's; add firefox to apps")
+        if firefox.homepage is None and not firefox.bookmarks:
+            firefox = None
+    kiosk = (raw.get("kiosk") or {}).get("app")
+    if kiosk is not None and kiosk not in apps:
+        problems.append(f"kiosk/app: {kiosk!r} must be one of the spec's apps")
+    return settings, firefox, kiosk, problems
 
 
 def _inside(folder: Path, given: str) -> Path | None:

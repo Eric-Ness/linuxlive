@@ -8,7 +8,7 @@
 #   install-to-disk --list-disks
 #   install-to-disk --disk /dev/sdX --user NAME --fullname "Full Name" \
 #                   --password-file FILE --hostname NAME --timezone Area/City \
-#                   [--autologin] [--image REF] --confirm /dev/sdX
+#                   [--autologin | --no-autologin] [--image REF] --confirm /dev/sdX
 #
 # The image is the one this build published (LL_IMAGE_REF in image.env, the
 # registry's :latest), downloaded during the install: it needs an internet
@@ -96,7 +96,7 @@ if [ "${1:-}" = --list-disks ]; then
 	exit 0
 fi
 
-disk="" user="" fullname="" password_file="" hostname="" timezone=UTC autologin=0 confirm="" image=""
+disk="" user="" fullname="" password_file="" hostname="" timezone=UTC autologin=${LL_AUTOLOGIN_DEFAULT:-0} confirm="" image=""
 while [ $# -gt 0 ]; do
 	case $1 in
 	--disk) disk=$2; shift 2 ;;
@@ -106,6 +106,7 @@ while [ $# -gt 0 ]; do
 	--hostname) hostname=$2; shift 2 ;;
 	--timezone) timezone=$2; shift 2 ;;
 	--autologin) autologin=1; shift ;;
+	--no-autologin) autologin=0; shift ;;
 	--image) image=$2; shift 2 ;;
 	--confirm) confirm=$2; shift 2 ;;
 	*) die "unknown option $1" ;;

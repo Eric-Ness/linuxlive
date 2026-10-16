@@ -6,6 +6,7 @@ import shlex
 
 from linuxlive import __version__
 from linuxlive.catalog import DATA_DIR
+from linuxlive.compiler import options
 from linuxlive.compiler.context import BuildContext
 from linuxlive.compiler.plan import LOGO_NAME, Plan
 from linuxlive.png import image_info
@@ -58,6 +59,7 @@ def add_branding(ctx: BuildContext, plan: Plan) -> None:
                 "LL_LOGO": f"/usr/share/pixmaps/{LOGO_NAME}.png",
                 "LL_LOGO_ICON": LOGO_NAME,
                 "LL_ACCENT_RGB": accent_rgb,
+                **options.branding_values(plan),
             }
         ),
     )
@@ -137,6 +139,9 @@ def gnome_override(plan: Plan) -> str:
     }
     if plan.gnome_accent:
         sections["org.gnome.desktop.interface"] = {"accent-color": _gvariant_string(plan.gnome_accent)}
+    if plan.keyboard:
+        # GNOME keeps its own list of layouts; the system's only seeds it.
+        sections["org.gnome.desktop.input-sources"] = {"sources": f"[('xkb', {_gvariant_string(plan.keyboard)})]"}
     return _override_text(plan, sections, [""] + ([":ubuntu"] if plan.base.id == "ubuntu" else []))
 
 
@@ -226,7 +231,10 @@ def add_iso_env(ctx: BuildContext, plan: Plan) -> None:
                 "LL_ISO_NAME": plan.iso_name,
                 "LL_LIVE_LAYOUT": plan.live_layout,
                 "LL_MARKER": plan.marker,
+                "LL_HOSTNAME": plan.hostname,
                 "LL_FLATPAKS": " ".join(app.flatpak for app in plan.apps),
+                # Flatpak installs translations only for these languages.
+                "LL_FLATPAK_LANGUAGES": plan.language.id.split("_")[0] if plan.language else "",
             }
         ),
     )

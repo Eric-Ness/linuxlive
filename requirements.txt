@@ -1,2 +1,4 @@
 PyYAML>=6.0
 jsonschema>=4.18
+# Time zone names for settings.timezone, where the system has no tz database.
+tzdata>=2024.1

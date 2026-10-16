@@ -7,7 +7,7 @@
 #       permissions:
 #         contents: read
 #         packages: write
-#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.4.2
+#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.5.0
 #       with:
 #         publish-image: true
 #
@@ -59,7 +59,7 @@ on:
         description: Pipeline version to build with (a tag, branch or commit)
         type: string
         # Changed with each release; tests/test_workflows.py checks it matches pyproject.toml.
-        default: v0.4.2
+        default: v0.5.0
 
 defaults:
   run:
@@ -234,6 +234,11 @@ jobs:
           fi
           # Big enough for large distros (a GIS workstation needs over 20 GB);
           # qcow2 only takes the space the install writes.
+          # A spec that asks for automatic login is installed with its own default,
+          # so the installed disk reaching the desktop proves the setting.
+          if python -c 'import json, sys; sys.exit(0 if json.load(open("build/ctx/linuxlive.json")).get("settings", {}).get("autologin") else 1)'; then
+            extra+=(--autoinstall-autologin spec)
+          fi
           qemu-img create -f qcow2 build/disk.qcow2 64G
           python linuxlive/scripts/boottest.py --iso "$ISO" --mode install --disk build/disk.qcow2 "${extra[@]}" --out "$RESULTS/modes/install" || true
           if grep -q LINUXLIVE_INSTALLED "$RESULTS/modes/install/serial.log" 2>/dev/null; then

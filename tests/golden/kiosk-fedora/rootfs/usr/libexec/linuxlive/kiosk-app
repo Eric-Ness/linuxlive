@@ -1,0 +1,3 @@
+#!/bin/sh
+# Kiosk mode: GCompris, full screen in Cage (linuxlive-kiosk.service).
+exec flatpak run org.kde.gcompris

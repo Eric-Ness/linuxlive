@@ -1,0 +1,44 @@
+#!/bin/sh
+# Sets one key in an INI-style config file and leaves the rest untouched.
+#
+#   ini-set FILE GROUP KEY VALUE
+#
+# GROUP is the text between the outer brackets, so KDE's nested groups work:
+# "Greeter][Wallpaper" matches the header [Greeter][Wallpaper]. Creates the
+# file and the group when they do not exist yet.
+set -eu
+
+[ $# -eq 4 ] || {
+	echo "usage: ini-set FILE GROUP KEY VALUE" >&2
+	exit 2
+}
+file=$1
+group=$2
+key=$3
+value=$4
+
+mkdir -p "$(dirname "$file")"
+[ -e "$file" ] || : >"$file"
+tmp=$(mktemp)
+# Values go through ENVIRON, not -v, so awk does not interpret backslashes.
+INI_HEADER="[$group]" INI_KEY="$key" INI_VALUE="$value" awk '
+	BEGIN { header = ENVIRON["INI_HEADER"]; key = ENVIRON["INI_KEY"]; line = key "=" ENVIRON["INI_VALUE"] }
+	/^\[/ {
+		if (in_group && !done) { print line; done = 1 }
+		in_group = ($0 == header)
+		seen = seen || in_group
+	}
+	in_group && index($0, key "=") == 1 {
+		if (!done) { print line; done = 1 }
+		next
+	}
+	{ print }
+	END {
+		if (!done) {
+			if (!in_group) print header
+			print line
+		}
+	}
+' "$file" >"$tmp"
+cat "$tmp" >"$file"
+rm -f "$tmp"

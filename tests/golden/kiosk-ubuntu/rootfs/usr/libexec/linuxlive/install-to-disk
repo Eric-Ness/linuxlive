@@ -1,0 +1,283 @@
+#!/bin/bash
+# linuxlive installer, the part that does the work: erases one whole disk and
+# installs the live system on it. The installer window (installer) and the
+# unattended test install (autoinstall) both run it as root.
+#
+#   install-to-disk --list-disks
+#   install-to-disk --disk /dev/sdX --user NAME --fullname "Full Name" \
+#                   --password-file FILE --hostname NAME --timezone Area/City \
+#                   [--autologin | --no-autologin] --confirm /dev/sdX
+#
+# --list-disks prints one line per disk: path, size in bytes, ok or the reason
+# it cannot be used, then its model (tab-separated). Nothing is erased unless
+# --confirm repeats --disk. Progress goes to stdout as "PROGRESS <percent>
+# <what>", a failure as "ERROR <message>" with exit status 1.
+#
+# The disk gets GPT with a BIOS boot partition, an EFI system partition and an
+# ext4 root; GRUB is installed for UEFI (through Ubuntu's signed shim, so
+# Secure Boot works) and for BIOS, from the .debs the image carries in
+# /usr/lib/linuxlive/installer/debs (the install works offline).
+set -euo pipefail
+export LC_ALL=C
+# shellcheck source=/dev/null
+. /usr/lib/linuxlive/branding.env
+
+DEBS=/usr/lib/linuxlive/installer/debs
+MIN_SPARE=$((4 * 1024 * 1024 * 1024))
+target=""
+
+progress() { printf 'PROGRESS %s %s\n' "$1" "$2"; }
+die() {
+	printf 'ERROR %s\n' "$*"
+	exit 1
+}
+
+# The live system's squashfs, on the boot medium casper mounted.
+find_squashfs() {
+	for dir in /cdrom /run/live/medium /isodevice; do
+		if [ -f "$dir/casper/filesystem.squashfs" ]; then
+			printf '%s' "$dir/casper/filesystem.squashfs"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# The disk the live system was started from, if any.
+live_disk() {
+	sq=$(find_squashfs) || return 0
+	src=$(findmnt -no SOURCE --target "$sq" 2>/dev/null | head -n 1)
+	[ -b "$src" ] || return 0
+	parent=$(lsblk -no PKNAME "$src" 2>/dev/null | head -n 1)
+	if [ -n "$parent" ]; then printf '/dev/%s' "$parent"; else printf '%s' "$src"; fi
+}
+
+needed_bytes() {
+	sq=$(find_squashfs) || {
+		printf 0
+		return
+	}
+	size=$(cat "$(dirname "$sq")/filesystem.size" 2>/dev/null || printf 0)
+	printf '%s' $((size + MIN_SPARE))
+}
+
+# "ok", or why the disk cannot be used.
+disk_problem() {
+	d=$1
+	[ -b "$d" ] || {
+		printf 'not a block device'
+		return
+	}
+	[ "$(lsblk -dno TYPE "$d" 2>/dev/null)" = disk ] || {
+		printf 'not a whole disk'
+		return
+	}
+	[ "$(lsblk -dno RO "$d" 2>/dev/null | tr -d ' ')" = 0 ] || {
+		printf 'read-only'
+		return
+	}
+	[ "$d" != "$(live_disk)" ] || {
+		printf 'the live system is running from it'
+		return
+	}
+	if lsblk -nro MOUNTPOINTS "$d" 2>/dev/null | grep -q .; then
+		printf 'something on it is in use (mounted)'
+		return
+	fi
+	if grep -q "^$d" /proc/swaps 2>/dev/null; then
+		printf 'it holds active swap'
+		return
+	fi
+	size=$(lsblk -bdno SIZE "$d")
+	need=$(needed_bytes)
+	[ "$size" -ge "$need" ] || {
+		printf 'too small: needs %s GB' $((need / 1000000000 + 1))
+		return
+	}
+	printf ok
+}
+
+list_disks() {
+	lsblk -dpno NAME,TYPE | awk '$2 == "disk" {print $1}' | while read -r d; do
+		case $d in /dev/loop* | /dev/zram* | /dev/sr*) continue ;; esac
+		printf '%s\t%s\t%s\t%s\n' "$d" "$(lsblk -bdno SIZE "$d")" "$(disk_problem "$d")" "$(lsblk -dno MODEL "$d" | sed 's/[[:space:]]*$//')"
+	done
+}
+
+part() { # the n-th partition of the disk: /dev/sda3, /dev/nvme0n1p3
+	case $1 in *[0-9]) printf '%sp%s' "$1" "$2" ;; *) printf '%s%s' "$1" "$2" ;; esac
+}
+
+in_target() { chroot "$target" "$@"; }
+
+cleanup() {
+	[ -n "$target" ] || return 0
+	sync
+	for m in sys/firmware/efi/efivars sys proc dev/pts dev run boot/efi ""; do
+		mountpoint -q "$target/$m" && umount -l "$target/$m" || true
+	done
+	rmdir "$target" 2>/dev/null || true
+}
+
+if [ "${1:-}" = --list-disks ]; then
+	list_disks
+	exit 0
+fi
+
+disk="" user="" fullname="" password_file="" hostname="" timezone=UTC autologin=${LL_AUTOLOGIN_DEFAULT:-0} confirm=""
+while [ $# -gt 0 ]; do
+	case $1 in
+	--disk) disk=$2; shift 2 ;;
+	--user) user=$2; shift 2 ;;
+	--fullname) fullname=$2; shift 2 ;;
+	--password-file) password_file=$2; shift 2 ;;
+	--hostname) hostname=$2; shift 2 ;;
+	--timezone) timezone=$2; shift 2 ;;
+	--autologin) autologin=1; shift ;;
+	--no-autologin) autologin=0; shift ;;
+	--confirm) confirm=$2; shift 2 ;;
+	--image) shift 2 ;; # Fedora's installer only (the image to install)
+	*) die "unknown option $1" ;;
+	esac
+done
+
+[ "$(id -u)" = 0 ] || die "the installer must run as root"
+[ -n "$disk" ] || die "no disk chosen"
+[ "$confirm" = "$disk" ] || die "the disk was not confirmed; nothing was changed"
+printf '%s' "$user" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$' || die "the user name must be lowercase letters, digits, - and _ (up to 32)"
+case $user in root | live | daemon | bin | sys | nobody) die "the user name $user is taken by the system" ;; esac
+printf '%s' "$hostname" | grep -Eq '^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$' || die "the computer name must be letters, digits and dashes"
+[ -f "/usr/share/zoneinfo/$timezone" ] || die "unknown time zone $timezone"
+[ -s "$password_file" ] || die "no password given"
+case $fullname in *:* | *$'\n'*) die "the name may not contain : or a line break" ;; esac
+squashfs=$(find_squashfs) || die "the live system's files were not found; start the installer from the live session"
+problem=$(disk_problem "$disk")
+[ "$problem" = ok ] || die "$disk cannot be used: $problem"
+[ -d "$DEBS" ] || die "the bootloader packages are missing from $DEBS"
+
+trap cleanup EXIT
+progress 2 "Erasing $disk"
+wipefs -a -q "$disk"
+sgdisk --zap-all "$disk" >/dev/null 2>&1 || true
+sgdisk -n 1:1MiB:+1MiB -t 1:ef02 -c 1:bios \
+	-n 2:0:+512MiB -t 2:ef00 -c 2:EFI \
+	-n 3:0:0 -t 3:8304 -c 3:root "$disk" >/dev/null
+partprobe "$disk" 2>/dev/null || true
+udevadm settle
+esp=$(part "$disk" 2)
+root=$(part "$disk" 3)
+for p in "$esp" "$root"; do
+	for _ in 1 2 3 4 5 6 7 8 9 10; do [ -b "$p" ] && break; sleep 1; done
+	[ -b "$p" ] || die "partition $p did not appear"
+done
+progress 5 "Formatting"
+mkfs.vfat -F 32 -n EFI "$esp" >/dev/null
+mkfs.ext4 -q -F -L "$(printf '%s' "$LL_ID" | cut -c1-16)" "$root"
+
+target=$(mktemp -d /tmp/linuxlive-target.XXXXXX)
+mount "$root" "$target"
+progress 8 "Copying $LL_NAME to the disk"
+total=$(cat "$(dirname "$squashfs")/filesystem.size" 2>/dev/null || printf 1)
+unsquashfs -f -n -d "$target" "$squashfs" >/dev/null &
+copy=$!
+while kill -0 "$copy" 2>/dev/null; do
+	used=$(df --output=used -B1 "$target" | tail -n 1 | tr -d ' ')
+	pct=$((8 + 62 * used / (total > 0 ? total : 1)))
+	[ "$pct" -le 70 ] || pct=70
+	progress "$pct" "Copying $LL_NAME to the disk"
+	sleep 3
+done
+wait "$copy" || die "copying the system failed"
+
+mkdir -p "$target/boot/efi"
+mount "$esp" "$target/boot/efi"
+for m in dev dev/pts proc sys run; do mount --bind "/$m" "$target/$m"; done
+if [ -d /sys/firmware/efi/efivars ]; then mount --bind /sys/firmware/efi/efivars "$target/sys/firmware/efi/efivars"; fi
+
+progress 72 "Setting up the system"
+cat >"$target/etc/fstab" <<EOF
+# Written by the linuxlive installer.
+UUID=$(blkid -s UUID -o value "$root") / ext4 errors=remount-ro 0 1
+UUID=$(blkid -s UUID -o value "$esp") /boot/efi vfat umask=0077 0 1
+EOF
+printf '%s\n' "$hostname" >"$target/etc/hostname"
+printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s\n::1\tlocalhost ip6-localhost ip6-loopback\n' "$hostname" >"$target/etc/hosts"
+ln -sf "/usr/share/zoneinfo/$timezone" "$target/etc/localtime"
+printf '%s\n' "$timezone" >"$target/etc/timezone"
+# A new identity for the installed system.
+: >"$target/etc/machine-id"
+rm -f "$target/var/lib/dbus/machine-id"
+
+# The live-only parts: casper, its config, the installer and its test hook.
+in_target env DEBIAN_FRONTEND=noninteractive dpkg --purge casper >/dev/null
+rm -f "$target/etc/casper.conf" \
+	"$target/usr/share/applications/linuxlive-install.desktop" \
+	"$target/etc/skel/Desktop/linuxlive-install.desktop" \
+	"$target/etc/xdg/autostart/linuxlive-install-on-boot.desktop"
+in_target systemctl disable linuxlive-autoinstall.service >/dev/null 2>&1 || true
+
+progress 76 "Creating $user"
+groups=""
+for g in adm sudo lpadmin plugdev netdev dip cdrom; do
+	if in_target getent group "$g" >/dev/null; then groups="$groups${groups:+,}$g"; fi
+done
+in_target useradd -m -s /bin/bash -c "$fullname" ${groups:+-G "$groups"} "$user"
+{ printf '%s:' "$user"; head -n 1 "$password_file"; } | in_target chpasswd
+# No first-login welcome on the installed system: Ubuntu's carries Ubuntu's own
+# artwork, and the installer already asked everything it would. Marking setup
+# done is not enough (Ubuntu's wizard then shows "what's new"), so it is
+# switched off: its autostart entries go and its systemd user units are masked.
+home=$(in_target getent passwd "$user" | cut -d: -f6)
+mkdir -p "$target$home/.config"
+printf 'yes\n' >"$target$home/.config/gnome-initial-setup-done"
+in_target chown -R "$user:$user" "$home/.config"
+for entry in "$target"/etc/xdg/autostart/*.desktop; do
+	case $(basename "$entry") in
+	*initial-setup* | *desktop-provision* | *ubuntu-welcome*) rm -f "$entry" ;;
+	esac
+done
+mkdir -p "$target/etc/systemd/user"
+for unit in "$target"/usr/lib/systemd/user/*initial-setup*.service "$target"/usr/lib/systemd/user/*desktop-provision*.service; do
+	[ -e "$unit" ] && ln -sf /dev/null "$target/etc/systemd/user/$(basename "$unit")"
+done
+if [ "$autologin" = 1 ]; then
+	case $LL_DESKTOP in
+	gnome) mkdir -p "$target/etc/gdm3" && printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=%s\n' "$user" >"$target/etc/gdm3/custom.conf" ;;
+	kde) mkdir -p "$target/etc/sddm.conf.d" && printf '[Autologin]\nUser=%s\nSession=plasma\n' "$user" >"$target/etc/sddm.conf.d/90-linuxlive-autologin.conf" ;;
+	cinnamon) mkdir -p "$target/etc/lightdm/lightdm.conf.d" && printf '[Seat:*]\nautologin-user=%s\n' "$user" >"$target/etc/lightdm/lightdm.conf.d/91-linuxlive-autologin.conf" ;;
+	esac
+fi
+
+progress 80 "Installing the bootloader"
+mkdir -p "$target/tmp/linuxlive-debs"
+cp "$DEBS"/*.deb "$target/tmp/linuxlive-debs/"
+in_target sh -c 'DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/linuxlive-debs/*.deb' >/dev/null || die "installing the bootloader packages failed"
+rm -rf "$target/tmp/linuxlive-debs" "$target$DEBS"
+# Twice: as EFI/ubuntu with a firmware boot entry, and with --removable as
+# EFI/BOOT/BOOTX64.EFI, which every UEFI firmware starts even without an entry
+# (Ubuntu's grub-install has no --force-extra-removable to do both at once).
+# Output goes to the log, so a failure says why.
+efi_grub() {
+	in_target grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --uefi-secure-boot "$@"
+}
+if [ -d /sys/firmware/efi ]; then
+	# Some firmware refuses new boot entries; the fallback path still boots.
+	efi_grub || {
+		printf 'NOTE writing the firmware boot entry failed; the disk boots through EFI/BOOT\n'
+		efi_grub --no-nvram || die "installing GRUB for UEFI failed"
+	}
+else
+	efi_grub --no-nvram || die "installing GRUB for UEFI failed"
+fi
+efi_grub --removable || die "installing GRUB at EFI/BOOT failed"
+in_target grub-install --target=i386-pc "$disk" || die "installing GRUB for BIOS failed"
+
+progress 88 "Preparing the first start"
+in_target update-initramfs -u -k all || die "rebuilding the initramfs failed"
+in_target update-grub || die "writing the boot menu failed"
+
+progress 98 "Finishing"
+cleanup
+target=""
+trap - EXIT
+progress 100 "Done"

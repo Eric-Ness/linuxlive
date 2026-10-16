@@ -1,0 +1,25 @@
+{
+  "policies": {
+    "Homepage": {
+      "URL": "https://linuxlive.com/",
+      "StartPage": "homepage",
+      "Locked": false
+    },
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "Bookmarks": [
+      {
+        "Title": "linuxlive Library",
+        "URL": "https://linuxlive.com/library/",
+        "Placement": "toolbar"
+      },
+      {
+        "Title": "Learn",
+        "URL": "https://linuxlive.com/learn/",
+        "Placement": "toolbar"
+      }
+    ],
+    "DisplayBookmarksToolbar": "always",
+    "DontCheckDefaultBrowser": true
+  }
+}

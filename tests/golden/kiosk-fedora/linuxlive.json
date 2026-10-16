@@ -1,0 +1,58 @@
+{
+  "apps": [
+    {
+      "flatpak": "org.kde.gcompris",
+      "id": "gcompris",
+      "name": "GCompris"
+    }
+  ],
+  "base": {
+    "id": "fedora",
+    "label": "Fedora 44",
+    "release": "44"
+  },
+  "base_image": "quay.io/fedora/fedora-kinoite:44",
+  "branding": {
+    "accent_color": "#c2185b",
+    "gnome_accent": null,
+    "logo": "/usr/share/pixmaps/linuxlive-logo.png",
+    "wallpaper": "/usr/share/backgrounds/linuxlive/wallpaper.png"
+  },
+  "desktop": {
+    "id": "kde",
+    "label": "KDE Plasma",
+    "shell_process": "plasmashell"
+  },
+  "id": "gioco-linux",
+  "iso": {
+    "file_name": "gioco-linux-0.1-fedora-amd64.iso",
+    "kernel_args": "root=live:CDLABEL=GIOCO_LINUX_0_1 rd.live.image rd.live.overlay.overlayfs=1 quiet rhgb",
+    "layout": "liveos",
+    "volume_id": "GIOCO_LINUX_0_1"
+  },
+  "name": "Gioco Linux",
+  "settings": {
+    "autologin": false,
+    "hidden_apps": [],
+    "hostname": "gioco-linux",
+    "keyboard": "it",
+    "kiosk": {
+      "app": "gcompris",
+      "command": [
+        "flatpak",
+        "run",
+        "org.kde.gcompris"
+      ],
+      "flatpak": "org.kde.gcompris",
+      "user": "linuxlive-kiosk"
+    },
+    "language": "it_IT",
+    "packages": [
+      "langpacks-it",
+      "cage",
+      "xorg-x11-server-Xwayland"
+    ],
+    "timezone": "Europe/Rome"
+  },
+  "version": "0.1"
+}

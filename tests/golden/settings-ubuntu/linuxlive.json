@@ -1,0 +1,70 @@
+{
+  "apps": [
+    {
+      "flatpak": "org.mozilla.firefox",
+      "id": "firefox",
+      "name": "Firefox"
+    }
+  ],
+  "base": {
+    "id": "ubuntu",
+    "label": "Ubuntu 26.04 LTS",
+    "release": "26.04"
+  },
+  "base_image": "docker.io/library/ubuntu:26.04",
+  "branding": {
+    "accent_color": "#c2185b",
+    "gnome_accent": "pink",
+    "logo": "/usr/share/pixmaps/linuxlive-logo.png",
+    "wallpaper": "/usr/share/backgrounds/linuxlive/wallpaper.png"
+  },
+  "desktop": {
+    "id": "gnome",
+    "label": "GNOME",
+    "shell_process": "gnome-shell"
+  },
+  "id": "aula-linux",
+  "iso": {
+    "file_name": "aula-linux-0.1-ubuntu-amd64.iso",
+    "kernel_args": "boot=casper quiet splash ---",
+    "layout": "casper",
+    "volume_id": "AULA_LINUX_0_1"
+  },
+  "name": "Aula Linux",
+  "settings": {
+    "autologin": true,
+    "firefox": {
+      "policies": {
+        "Bookmarks": [
+          {
+            "Placement": "toolbar",
+            "Title": "linuxlive Library",
+            "URL": "https://linuxlive.com/library/"
+          }
+        ],
+        "DisplayBookmarksToolbar": "always",
+        "DontCheckDefaultBrowser": true,
+        "Homepage": {
+          "Locked": false,
+          "StartPage": "homepage",
+          "URL": "https://linuxlive.com/"
+        },
+        "OverrideFirstRunPage": "",
+        "OverridePostUpdatePage": ""
+      }
+    },
+    "hidden_apps": [
+      "yelp",
+      "org.gnome.Ptyxis"
+    ],
+    "hostname": "aula-1",
+    "keyboard": "es",
+    "language": "es_ES",
+    "packages": [
+      "language-pack-es",
+      "language-pack-gnome-es"
+    ],
+    "timezone": "Europe/Madrid"
+  },
+  "version": "0.1"
+}

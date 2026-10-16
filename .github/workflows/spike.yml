@@ -12,7 +12,8 @@
 # Monthly (the 3rd, 04:17 UTC) it also rebuilds and publishes the examples, so
 # their packages never fall more than a month behind Ubuntu's and Fedora's.
 #
-# publish: run by hand with publish ticked (or monthly), it copies the four ISOs to the R2
+# publish: run by hand with publish ticked (or monthly), it copies the four
+#          published examples' ISOs (TestOS and Lawn Darts) to the R2
 #          bucket behind downloads.linuxlive.com once every build has passed,
 #          as <example>/<run id>/<example>.iso (the path the site links to),
 #          with its .sha256 and .packages (the package list) beside it.
@@ -113,7 +114,8 @@ jobs:
       fail-fast: false
       matrix:
         # Each name is a spec in examples/; a hand-run with "only" builds just that one.
-        example: ${{ fromJSON(inputs.only && format('["{0}"]', inputs.only) || '["testos-ubuntu", "testos-fedora", "lawndarts-ubuntu", "lawndarts-fedora"]') }}
+        # The settings and kiosk examples are built and checked, never published.
+        example: ${{ fromJSON(inputs.only && format('["{0}"]', inputs.only) || '["testos-ubuntu", "testos-fedora", "lawndarts-ubuntu", "lawndarts-fedora", "settings-ubuntu", "settings-fedora", "settings-cinnamon", "kiosk-ubuntu", "kiosk-fedora"]') }}
     uses: ./.github/workflows/build.yml
     with:
       spec: examples/${{ matrix.example }}.yaml

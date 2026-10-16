@@ -1,0 +1,3 @@
+#!/bin/sh
+# Kiosk mode: Firefox, full screen in Cage (linuxlive-kiosk.service).
+exec flatpak run org.mozilla.firefox --kiosk

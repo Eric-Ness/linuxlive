@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Apply distro branding
+Comment=Sets the distro wallpaper and launcher logo on first login
+Exec=/usr/libexec/linuxlive/kde-apply-branding
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2

@@ -1,0 +1,27 @@
+# Example spec: an Ubuntu 26.04 kiosk that starts straight into Firefox, full
+# screen, on its home page, in French. CI builds and boots it to check kiosk
+# mode and Firefox's policies in a running Firefox.
+schema_version: 1
+name: Borne Linux
+version: "0.1"
+base: ubuntu
+desktop: gnome
+apps:
+  - firefox
+branding:
+  wallpaper: assets/wallpaper.png
+  logo: assets/logo.png
+  accent_color: "#c2185b"
+settings:
+  language: fr_FR
+  keyboard: fr
+  timezone: Europe/Paris
+firefox:
+  homepage: https://linuxlive.com/
+  bookmarks:
+    - name: linuxlive Library
+      url: https://linuxlive.com/library/
+    - name: Learn
+      url: https://linuxlive.com/learn/
+kiosk:
+  app: firefox

@@ -55,7 +55,11 @@ def test_spike_publishes_every_example_only_after_all_builds_pass():
     publish = spike["jobs"]["publish"]
     assert publish["needs"] == "build"
     assert publish["if"] == "inputs.publish == true || github.event_name == 'schedule'"
-    assert publish["strategy"]["matrix"]["example"] == spike_examples(spike)
+    # The four published examples (the site's downloads); the settings and
+    # kiosk examples are built and checked only.
+    published = publish["strategy"]["matrix"]["example"]
+    assert published == ["testos-ubuntu", "testos-fedora", "lawndarts-ubuntu", "lawndarts-fedora"]
+    assert set(published) < set(spike_examples(spike))
     # Publishing needs the ISO artifacts.
     assert "inputs.publish == true" in spike["jobs"]["build"]["with"]["keep-iso"]
     assert "github.event_name == 'schedule'" in spike["jobs"]["build"]["with"]["keep-iso"]

@@ -1,0 +1,12 @@
+{
+  "policies": {
+    "Homepage": {
+      "URL": "https://linuxlive.com/learn/",
+      "StartPage": "homepage",
+      "Locked": false
+    },
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "DontCheckDefaultBrowser": true
+  }
+}

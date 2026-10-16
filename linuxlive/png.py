@@ -307,3 +307,20 @@ def hue_fraction(
         if s >= min_saturation and v >= min_value and hue_distance(h * 360, hue) <= tolerance:
             matched += 1
     return matched / total if total else 0.0
+
+
+def screen_variety(image: Image, *, step: int = 4) -> tuple[float, int]:
+    """How much is on screen: the share of sampled pixels in the commonest colour,
+    and how many colours there are, with each channel cut to 16 levels.
+
+    A blank or frozen screen is nearly one colour; a page or an app is not.
+    """
+    counts: dict[tuple[int, int, int], int] = {}
+    total = 0
+    for r, g, b in _samples(image, step):
+        key = (r >> 4, g >> 4, b >> 4)
+        counts[key] = counts.get(key, 0) + 1
+        total += 1
+    if not total:
+        return 1.0, 0
+    return max(counts.values()) / total, len(counts)

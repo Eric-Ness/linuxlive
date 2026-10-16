@@ -1,0 +1,68 @@
+#!/bin/sh
+# linuxlive first start of an installed Fedora-based system: creates the user
+# the installer asked for (from /etc/linuxlive/firstboot.env, which only
+# install-to-disk writes), before the login screen starts, then deletes the
+# file. The image is the same one the live ISO runs, so this also hides what
+# only the live session needs: the installer's launcher and upstream's
+# first-login welcome wizard.
+set -eu
+env=/etc/linuxlive/firstboot.env
+[ -f "$env" ] || exit 0
+# shellcheck source=/dev/null
+. "$env"
+# shellcheck source=/dev/null
+. /usr/lib/linuxlive/branding.env
+
+# No installer on the installed system: its desktop copy lives in /etc/skel,
+# and the menu entry in /usr (read-only) is hidden from /usr/local.
+rm -f /etc/skel/Desktop/linuxlive-install.desktop
+mkdir -p /usr/local/share/applications
+printf '[Desktop Entry]\nHidden=true\n' >/usr/local/share/applications/linuxlive-install.desktop
+
+useradd -m -c "$LL_FULLNAME" -G wheel -p "$LL_PASSWORD_HASH" "$LL_USER"
+home=$(getent passwd "$LL_USER" | cut -d: -f6)
+# And from the new user's own desktop, should a copy have come with the home.
+rm -f "$home/Desktop/linuxlive-install.desktop"
+# No Plasma Welcome (its first page says "Welcome to Fedora!" beside Fedora's
+# logo): a KDED module opens it unless this says it was seen or should not show.
+/usr/libexec/linuxlive/ini-set "$home/.config/plasma-welcomerc" General ShouldShow false
+/usr/libexec/linuxlive/ini-set "$home/.config/plasma-welcomerc" General LastSeenVersion 99.0.0
+
+# No first-login welcome (upstream's, with upstream's artwork): setup is
+# marked done, and its autostart entries and user units are switched off.
+mkdir -p "$home/.config"
+printf 'yes\n' >"$home/.config/gnome-initial-setup-done"
+chown -R "$LL_USER:$LL_USER" "$home/.config"
+for entry in /etc/xdg/autostart/*initial-setup*.desktop; do
+	[ -e "$entry" ] && rm -f "$entry"
+done
+mkdir -p /etc/systemd/user
+for unit in /usr/lib/systemd/user/*initial-setup*.service; do
+	[ -e "$unit" ] && ln -sf /dev/null "/etc/systemd/user/$(basename "$unit")"
+done
+
+if [ "${LL_AUTOLOGIN:-0}" = 1 ]; then
+	case $LL_DESKTOP in
+	gnome)
+		mkdir -p /etc/gdm
+		printf '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=%s\n' "$LL_USER" >/etc/gdm/custom.conf
+		;;
+	kde)
+		# Fedora 44's KDE uses Plasma Login Manager (an SDDM fork, same
+		# [Autologin] keys); older images use SDDM itself. Write both.
+		for dir in /etc/plasmalogin.conf.d /etc/sddm.conf.d; do
+			mkdir -p "$dir"
+			printf '[Autologin]\nUser=%s\nSession=plasma\n' "$LL_USER" >"$dir/90-linuxlive-autologin.conf"
+		done
+		;;
+	cinnamon)
+		# Fedora's LightDM only logs in automatically members of autologin.
+		getent group autologin >/dev/null || groupadd -r autologin
+		usermod -aG autologin "$LL_USER"
+		mkdir -p /etc/lightdm/lightdm.conf.d
+		printf '[Seat:*]\nautologin-user=%s\nautologin-session=cinnamon\n' "$LL_USER" >/etc/lightdm/lightdm.conf.d/91-linuxlive-autologin.conf
+		;;
+	esac
+fi
+restorecon -R /etc/gdm /etc/sddm.conf.d /etc/plasmalogin.conf.d /etc/lightdm /etc/systemd/user /usr/local/share/applications "$home" 2>/dev/null || true
+rm -f "$env"

@@ -1,11 +1,11 @@
 [project]
 name = "linuxlive"
-version = "0.4.2"
+version = "0.5.0"
 description = "Compile a distro spec into a container build and a bootable live ISO"
 license = "GPL-3.0-or-later"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["PyYAML>=6.0", "jsonschema>=4.18"]
+dependencies = ["PyYAML>=6.0", "jsonschema>=4.18", "tzdata>=2024.1"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]

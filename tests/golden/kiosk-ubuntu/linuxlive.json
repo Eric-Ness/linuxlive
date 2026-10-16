@@ -1,0 +1,85 @@
+{
+  "apps": [
+    {
+      "flatpak": "org.mozilla.firefox",
+      "id": "firefox",
+      "name": "Firefox"
+    }
+  ],
+  "base": {
+    "id": "ubuntu",
+    "label": "Ubuntu 26.04 LTS",
+    "release": "26.04"
+  },
+  "base_image": "docker.io/library/ubuntu:26.04",
+  "branding": {
+    "accent_color": "#c2185b",
+    "gnome_accent": "pink",
+    "logo": "/usr/share/pixmaps/linuxlive-logo.png",
+    "wallpaper": "/usr/share/backgrounds/linuxlive/wallpaper.png"
+  },
+  "desktop": {
+    "id": "gnome",
+    "label": "GNOME",
+    "shell_process": "gnome-shell"
+  },
+  "id": "borne-linux",
+  "iso": {
+    "file_name": "borne-linux-0.1-ubuntu-amd64.iso",
+    "kernel_args": "boot=casper quiet splash ---",
+    "layout": "casper",
+    "volume_id": "BORNE_LINUX_0_1"
+  },
+  "name": "Borne Linux",
+  "settings": {
+    "autologin": false,
+    "firefox": {
+      "policies": {
+        "Bookmarks": [
+          {
+            "Placement": "toolbar",
+            "Title": "linuxlive Library",
+            "URL": "https://linuxlive.com/library/"
+          },
+          {
+            "Placement": "toolbar",
+            "Title": "Learn",
+            "URL": "https://linuxlive.com/learn/"
+          }
+        ],
+        "DisplayBookmarksToolbar": "always",
+        "DontCheckDefaultBrowser": true,
+        "Homepage": {
+          "Locked": false,
+          "StartPage": "homepage",
+          "URL": "https://linuxlive.com/"
+        },
+        "OverrideFirstRunPage": "",
+        "OverridePostUpdatePage": ""
+      }
+    },
+    "hidden_apps": [],
+    "hostname": "borne-linux",
+    "keyboard": "fr",
+    "kiosk": {
+      "app": "firefox",
+      "command": [
+        "flatpak",
+        "run",
+        "org.mozilla.firefox",
+        "--kiosk"
+      ],
+      "flatpak": "org.mozilla.firefox",
+      "user": "linuxlive-kiosk"
+    },
+    "language": "fr_FR",
+    "packages": [
+      "language-pack-fr",
+      "language-pack-gnome-fr",
+      "cage",
+      "xwayland"
+    ],
+    "timezone": "Europe/Paris"
+  },
+  "version": "0.1"
+}

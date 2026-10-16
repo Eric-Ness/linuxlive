@@ -1,0 +1,572 @@
+#!/bin/sh
+# linuxlive boot check.
+#
+# Reports how far a boot got by printing LINUXLIVE_* lines to the first serial
+# port, where the QEMU test harness (scripts/boottest.py) reads them. It only
+# runs when QEMU passes -fw_cfg name=opt/linuxlive/bootcheck, so on real
+# hardware, and in VMs started any other way, it exits without doing anything.
+
+# shellcheck disable=SC2154 # os-release variables come from /etc/os-release
+flag=/sys/firmware/qemu_fw_cfg/by_name/opt/linuxlive/bootcheck/raw
+[ -e "$flag" ] || modprobe qemu_fw_cfg 2>/dev/null
+[ -e "$flag" ] || exit 0
+exec 3>/dev/ttyS0 || exit 0
+
+say() { printf '%s\n' "$*" >&3; }
+fact() { say "LINUXLIVE_FACT $1=$2"; }
+
+say LINUXLIVE_BOOTCHECK_START
+
+# shellcheck source=/dev/null
+. /etc/os-release
+fact os_name "$NAME"
+fact os_pretty_name "$PRETTY_NAME"
+fact image_id "${IMAGE_ID:-}"
+fact image_version "${IMAGE_VERSION:-}"
+fact build_id "${BUILD_ID:-}"
+fact kernel "$(uname -r)"
+fact cmdline "$(cat /proc/cmdline)"
+# Live from the ISO, or a system the installer put on a disk.
+if grep -qwE 'boot=casper|rd\.live\.image' /proc/cmdline; then fact boot_medium live; else fact boot_medium disk; fi
+fact root_fstype "$(findmnt -no FSTYPE / 2>/dev/null)"
+# A bootc system with composefs has an overlay at /; its file system is at /sysroot.
+if mountpoint -q /sysroot 2>/dev/null; then fact sysroot_fstype "$(findmnt -no FSTYPE /sysroot 2>/dev/null)"; fi
+if command -v dpkg-query >/dev/null 2>&1; then
+	if dpkg-query -W -f='${Status}' casper 2>/dev/null | grep -q 'ok installed'; then fact casper_installed yes; else fact casper_installed no; fi
+fi
+fact login_users "$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 {print $1}' | sort | tr '\n' ' ' | sed 's/ $//')"
+# An installed bootc system: the image it updates from.
+if command -v bootc >/dev/null 2>&1; then
+	fact bootc_image "$(bootc status --format json 2>/dev/null | python3 -c 'import json, sys
+try:
+    print(json.load(sys.stdin)["status"]["booted"]["image"]["image"]["image"])
+except Exception:
+    print("none")' 2>/dev/null || printf none)"
+fi
+
+if [ -d /sys/firmware/efi ]; then
+	fact firmware uefi
+else
+	fact firmware bios
+fi
+secureboot=0
+for var in /sys/firmware/efi/efivars/SecureBoot-*; do
+	# 4 bytes of attributes, then the value byte.
+	[ -e "$var" ] && secureboot=$(od -An -tu1 -j4 -N1 "$var" | tr -d ' \n')
+done
+fact secureboot "${secureboot:-0}"
+
+theme=""
+if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+	theme=$(plymouth-set-default-theme 2>/dev/null || true)
+fi
+if [ -z "$theme" ] && [ -e /usr/share/plymouth/themes/default.plymouth ]; then
+	theme=$(basename "$(dirname "$(readlink -f /usr/share/plymouth/themes/default.plymouth)")")
+fi
+fact plymouth_theme "${theme:-unknown}"
+text_theme=none
+if [ -e /usr/share/plymouth/themes/text.plymouth ]; then
+	text_theme=$(basename "$(dirname "$(readlink -f /usr/share/plymouth/themes/text.plymouth)")")
+fi
+fact plymouth_text_theme "$text_theme"
+# What the boot actually used: the themes packed into this kernel's initramfs.
+initrd=""
+for candidate in "/boot/initrd.img-$(uname -r)" "/usr/lib/modules/$(uname -r)/initramfs.img"; do
+	[ -e "$candidate" ] && initrd=$candidate && break
+done
+themes=""
+if [ -n "$initrd" ]; then
+	if command -v lsinitramfs >/dev/null 2>&1; then
+		listing=$(lsinitramfs "$initrd" 2>/dev/null)
+	else
+		listing=$(lsinitrd "$initrd" 2>/dev/null)
+	fi
+	themes=$(printf '%s\n' "$listing" | sed -n 's|.*usr/share/plymouth/themes/\([^/ ]*\)/.*|\1|p' | sort -u | tr '\n' ' ')
+fi
+fact initrd_plymouth_themes "${themes:-unknown}"
+
+if command -v getenforce >/dev/null 2>&1; then
+	fact selinux "$(getenforce 2>/dev/null)"
+else
+	fact selinux absent
+fi
+
+for app in $(flatpak list --system --app --columns=application 2>/dev/null); do
+	fact flatpak "$app"
+done
+
+# The distro's own packages and files (packages and files in its spec), and
+# what its build steps ran (usr/libexec/linuxlive/user-build).
+package_installed() {
+	if command -v dpkg-query >/dev/null 2>&1; then
+		if dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'ok installed'; then printf yes; else printf no; fi
+	elif rpm -q --quiet --whatprovides "$1" 2>/dev/null; then
+		printf yes
+	else
+		printf no
+	fi
+}
+if [ -f /usr/lib/linuxlive/extras.json ]; then
+	python3 -c 'import json, sys
+extras = json.load(open(sys.argv[1]))
+for name in extras.get("packages", []):
+    print("package", name)
+for dest in extras.get("files", []):
+    print("file", dest)' /usr/lib/linuxlive/extras.json 2>/dev/null |
+		while read -r kind value; do
+			case $kind in
+			package) fact extra_package "$value=$(package_installed "$value")" ;;
+			file) fact extra_file "$value=$(sha256sum "$value" 2>/dev/null | cut -d' ' -f1)" ;;
+			esac
+		done
+fi
+if [ -f /usr/lib/linuxlive/user-build.log ]; then
+	while IFS= read -r line; do fact user_build "$line"; done </usr/lib/linuxlive/user-build.log
+fi
+
+# Upstream branding that a distro which isn't Ubuntu or Fedora must not show.
+if command -v rpm >/dev/null 2>&1; then
+	logos=$(rpm -qa --qf '%{NAME} ' 'fedora-logos*' 2>/dev/null)
+	fact fedora_logo_packages "${logos:-none}"
+fi
+fact issue "$(head -n 1 /etc/issue 2>/dev/null)"
+yaru=/usr/share/icons/Yaru/scalable/actions
+if [ -e "$yaru/view-app-grid-ubuntu-symbolic.svg" ]; then
+	# Ubuntu's dock draws Show Apps with this icon; Yaru ships it as the Ubuntu logo.
+	if cmp -s "$yaru/view-app-grid-ubuntu-symbolic.svg" "$yaru/view-app-grid-symbolic.svg"; then
+		fact dock_show_apps_icon generic
+	else
+		fact dock_show_apps_icon ubuntu
+	fi
+fi
+# The spec's settings (settings, firefox, kiosk), as the system has them.
+# shellcheck disable=SC2154 # LL_* settings come from /usr/lib/linuxlive/branding.env
+settings=$(. /usr/lib/linuxlive/branding.env && printf '%s\n%s\n%s\n' "${LL_HIDDEN_APPS:-}" "${LL_KIOSK_APP:-}" "${LL_KIOSK_USER:-}")
+hidden_apps=$(printf '%s\n' "$settings" | sed -n 1p)
+kiosk_app=$(printf '%s\n' "$settings" | sed -n 2p)
+kiosk_user=$(printf '%s\n' "$settings" | sed -n 3p)
+fact hostname "$(cat /proc/sys/kernel/hostname 2>/dev/null)"
+fact system_locale "$(sed -n 's/^LANG=//p' /etc/locale.conf /etc/default/locale 2>/dev/null | tr -d '"' | head -n 1)"
+fact timezone "$(readlink -f /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||')"
+fact keyboard_system "$(localectl status 2>/dev/null | sed -n 's/^ *X11 Layout: *//p' | head -n 1)"
+for entry in $hidden_apps; do
+	file=/usr/share/applications/$entry.desktop
+	if [ ! -f "$file" ]; then
+		state=absent
+	elif awk '/^\[/ { group = $0 } group == "[Desktop Entry]" && /^NoDisplay[ \t]*=[ \t]*true/ { found = 1 } END { exit !found }' "$file"; then
+		state=hidden
+	else
+		state=shown
+	fi
+	fact hidden_app "$entry=$state"
+done
+for policies in /var/lib/flatpak/extension/org.mozilla.firefox.systemconfig/*/stable/policies/policies.json; do
+	[ -f "$policies" ] && fact firefox_policies "$(sha256sum "$policies" | cut -d' ' -f1)"
+done
+# Who an installed system logs in automatically, from its login screen's settings.
+autologin=$(
+	{
+		awk -F= '/^\[daemon\]/ { d = 1; next } /^\[/ { d = 0 } d && $1 == "AutomaticLoginEnable" { e = tolower($2) } d && $1 == "AutomaticLogin" { u = $2 }
+			END { if (e == "true" && u != "") print u }' /etc/gdm3/custom.conf /etc/gdm/custom.conf 2>/dev/null
+		cat /etc/sddm.conf.d/*.conf /etc/plasmalogin.conf.d/*.conf 2>/dev/null | sed -n 's/^User=//p'
+		cat /etc/lightdm/lightdm.conf.d/*.conf 2>/dev/null | sed -n 's/^autologin-user=//p'
+	} | sed '/^$/d' | sort -u | tr '\n' ' ' | sed 's/ $//'
+)
+fact autologin_users "${autologin:-none}"
+say LINUXLIVE_BOOTED
+
+# The icons a user's Plasma application launchers show, from Plasma's saved
+# layout: a launcher section names the plugin, and its [Configuration][General]
+# subsection holds the icon ("default" when the launcher keeps its own).
+launcher_icons_in() {
+	[ -f "$1" ] || return 0
+	awk '
+		/^\[/ { section = $0; next }
+		/^plugin=org\.kde\.plasma\.(kickoff|kicker|kickerdash)$/ { launcher[section] = 1 }
+		/^icon=/ { icon[section] = substr($0, 6) }
+		END {
+			for (s in launcher) {
+				g = s "[Configuration][General]"
+				printf "%s ", ((g in icon) ? icon[g] : "default")
+			}
+		}' "$1" | sed 's/ $//'
+}
+
+# Error lines from a user's X session log, their journal, the kernel's (which
+# logs segfaults) and systemd-coredump's, for a desktop shell that crashed.
+session_errors() {
+	home=$(getent passwd "$1" | cut -d: -f6)
+	uid=$(id -u "$1")
+	{
+		if [ -f "$home/.xsession-errors" ]; then tail -n 300 "$home/.xsession-errors"; fi
+		journalctl -b --no-pager -o cat "_UID=$uid" 2>/dev/null | tail -n 500
+		journalctl -k -b --no-pager -o cat 2>/dev/null | grep -i segfault | tail -n 5
+		journalctl -b --no-pager -o cat -t systemd-coredump 2>/dev/null | head -n 20
+	} | grep -iE 'error|critical|fatal|segfault|crash|traceback|assert|dumped core|signal|#[0-9]+ ' | tail -n 20 |
+		while IFS= read -r line; do fact session_error "$line"; done
+}
+
+failed_units() {
+	units=$(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | tr '\n' ' ')
+	units=${units% }
+	printf '%s' "${units:-none}"
+}
+
+# Update notifiers the user's session starts: autostart entries that exist and
+# that the user's own copy does not hide (Fedora's livesys hides Discover's).
+update_notifiers() {
+	home=$(getent passwd "$1" | cut -d: -f6)
+	found=""
+	for entry in update-notifier ubuntu-advantage-notification org.kde.discover.notifier; do
+		file=/etc/xdg/autostart/$entry.desktop
+		[ -e "$home/.config/autostart/$entry.desktop" ] && file=$home/.config/autostart/$entry.desktop
+		[ -f "$file" ] || continue
+		grep -qx 'Hidden=true' "$file" && continue
+		found="$found $entry"
+	done
+	found=${found# }
+	printf '%s' "${found:-none}"
+}
+
+# Whether GNOME Software checks for updates, as the session sees it: settings
+# can be scoped to a desktop, so read them with the session's XDG_CURRENT_DESKTOP.
+gnome_software_updates() {
+	home=$(getent passwd "$1" | cut -d: -f6)
+	desktop=""
+	if [ -n "$2" ]; then
+		desktop=$(tr '\0' '\n' <"/proc/$2/environ" 2>/dev/null | sed -n 's/^XDG_CURRENT_DESKTOP=//p')
+	fi
+	if ! command -v gsettings >/dev/null 2>&1 ||
+		! runuser -u "$1" -- env HOME="$home" gsettings list-schemas 2>/dev/null | grep -qx org.gnome.software; then
+		printf absent
+		return
+	fi
+	runuser -u "$1" -- env HOME="$home" XDG_CURRENT_DESKTOP="$desktop" \
+		gsettings get org.gnome.software allow-updates 2>/dev/null || printf error
+}
+
+# The installer Plasma Welcome's live page offers, if any, and whether it exists.
+welcome_installer() {
+	rc="$(getent passwd "$1" | cut -d: -f6)/.config/plasma-welcomerc"
+	installer=$(sed -n 's/^LiveInstaller=//p' "$rc" 2>/dev/null)
+	if [ -z "$installer" ]; then
+		printf none
+	elif [ -e "/usr/share/applications/$installer.desktop" ]; then
+		printf '%s' "$installer"
+	else
+		printf 'missing:%s' "$installer"
+	fi
+}
+
+# Ubuntu's medium check runs at idle priority and writes its verdict to
+# /run/casper-md5check.json. Wait for it until shortly before boottest.py
+# stops the VM, then say "running" if it has not finished.
+casper_md5check() {
+	result=""
+	tries=0
+	while [ "$tries" -lt 25 ]; do
+		result=$(sed -n 's/.*"result": "\([a-z]*\)".*/\1/p' /run/casper-md5check.json 2>/dev/null)
+		[ -n "$result" ] && break
+		if [ "$(systemctl show -p ActiveState --value casper-md5check.service 2>/dev/null)" = failed ]; then
+			result=failed
+			break
+		fi
+		tries=$((tries + 1))
+		sleep 2
+	done
+	printf '%s' "${result:-running}"
+}
+
+# Plasma saves the layout a little after the login script changes it, so give
+# it up to two minutes to show the distro logo before reporting what is there.
+kde_launcher_icons() {
+	# shellcheck disable=SC2154 # LL_LOGO_ICON comes from branding.env
+	want=$(. /usr/lib/linuxlive/branding.env && printf '%s' "$LL_LOGO_ICON")
+	rc="$(getent passwd "$1" | cut -d: -f6)/.config/plasma-org.kde.plasma.desktop-appletsrc"
+	found=""
+	tries=0
+	while [ "$tries" -lt 60 ]; do
+		found=$(launcher_icons_in "$rc")
+		case " $found " in *" $want "*) break ;; esac
+		tries=$((tries + 1))
+		sleep 2
+	done
+	printf '%s' "${found:-none}"
+}
+
+# The layout the session types with: GNOME's own list, Plasma's kxkbrc, the
+# X server's (Cinnamon) or Cage's (kiosk mode, from its environment).
+session_keyboard() {
+	user=$1 shell=$2 pid=$3
+	home=$(getent passwd "$user" | cut -d: -f6)
+	case $shell in
+	gnome-shell)
+		runuser -u "$user" -- env HOME="$home" XDG_CURRENT_DESKTOP="$(environ_of "$pid" XDG_CURRENT_DESKTOP)" \
+			gsettings get org.gnome.desktop.input-sources sources 2>/dev/null | sed -n "s/^\[('xkb', '\([^']*\)').*/\1/p"
+		;;
+	plasmashell)
+		for rc in "$home/.config/kxkbrc" /etc/xdg/kxkbrc; do
+			layouts=$(sed -n 's/^LayoutList=//p' "$rc" 2>/dev/null | head -n 1)
+			if [ -n "$layouts" ]; then
+				printf '%s' "${layouts%%,*}"
+				break
+			fi
+		done
+		;;
+	cinnamon)
+		runuser -u "$user" -- env DISPLAY="$(environ_of "$pid" DISPLAY)" XAUTHORITY="$(environ_of "$pid" XAUTHORITY)" \
+			setxkbmap -query 2>/dev/null | sed -n 's/^layout: *//p' | cut -d, -f1
+		;;
+	cage) environ_of "$pid" XKB_DEFAULT_LAYOUT ;;
+	esac
+}
+
+# One variable from a process's environment.
+environ_of() {
+	tr '\0' '\n' <"/proc/$1/environ" 2>/dev/null | sed -n "s/^$2=//p" | head -n 1
+}
+
+# Whether the desktop shell has its words in the session's language.
+shell_translation() {
+	lang=$1 shell=$2
+	if [ -z "$lang" ]; then
+		printf none
+		return
+	fi
+	case $shell in
+	gnome-shell | plasmashell | cinnamon) domain=$shell ;;
+	*)
+		printf none
+		return
+		;;
+	esac
+	short=${lang%%.*}
+	for dir in /usr/share/locale /usr/share/locale-langpack; do
+		for code in "$short" "${short%%_*}"; do
+			if [ -f "$dir/$code/LC_MESSAGES/$domain.mo" ]; then
+				printf '%s' "$dir/$code/LC_MESSAGES/$domain.mo"
+				return
+			fi
+		done
+	done
+	printf missing
+}
+
+# The Flatpak apps running in a user's session.
+running_apps() {
+	uid=$(id -u "$1")
+	runuser -u "$1" -- env XDG_RUNTIME_DIR="/run/user/$uid" flatpak ps --columns=application 2>/dev/null |
+		sort -u | tr '\n' ' ' | sed 's/ $//'
+}
+
+# What Flathub's Firefox has open and bookmarked, from its profile: the
+# session file Firefox writes every few seconds (mozlz4: LZ4 with a header)
+# and its bookmarks database.
+firefox_state() {
+	home=$(getent passwd "$1" | cut -d: -f6)
+	python3 - "$home/.var/app/org.mozilla.firefox" <<'PY' 2>/dev/null
+import glob, json, os, shutil, sqlite3, sys, tempfile
+
+
+def lz4_block(src):
+    out, i = bytearray(), 0
+    while i < len(src):
+        token = src[i]
+        i += 1
+        n = token >> 4
+        if n == 15:
+            while True:
+                b = src[i]
+                i += 1
+                n += b
+                if b != 255:
+                    break
+        out += src[i:i + n]
+        i += n
+        if i >= len(src):
+            break
+        offset = src[i] | src[i + 1] << 8
+        i += 2
+        n = token & 15
+        if n == 15:
+            while True:
+                b = src[i]
+                i += 1
+                n += b
+                if b != 255:
+                    break
+        start = len(out) - offset
+        for k in range(n + 4):
+            out.append(out[start + k])
+    return bytes(out)
+
+
+root = sys.argv[1]
+for path in sorted(glob.glob(root + "/**/sessionstore-backups/recovery.jsonlz4", recursive=True)):
+    data = open(path, "rb").read()
+    if data[:8] != b"mozLz40\0":
+        continue
+    session = json.loads(lz4_block(data[12:]))
+    for window in session.get("windows", []):
+        for tab in window.get("tabs", []):
+            entries = tab.get("entries") or []
+            if entries:
+                print("open", entries[min(tab.get("index", 1), len(entries)) - 1].get("url", ""))
+for path in sorted(glob.glob(root + "/**/places.sqlite", recursive=True)):
+    work = tempfile.mkdtemp()
+    for suffix in ("", "-wal"):
+        if os.path.exists(path + suffix):
+            shutil.copy(path + suffix, os.path.join(work, "places.sqlite" + suffix))
+    db = sqlite3.connect(os.path.join(work, "places.sqlite"))
+    for (url,) in db.execute("SELECT p.url FROM moz_bookmarks b JOIN moz_places p ON b.fk = p.id WHERE b.type = 1 ORDER BY b.id"):
+        print("bookmark", url)
+    db.close()
+    shutil.rmtree(work, ignore_errors=True)
+PY
+}
+
+# Wait for an active graphical user session with its desktop shell running.
+deadline=$(($(date +%s) + 2700))
+while [ "$(date +%s)" -lt "$deadline" ]; do
+	for session in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}'); do
+		class=$(loginctl show-session "$session" -p Class --value 2>/dev/null)
+		state=$(loginctl show-session "$session" -p State --value 2>/dev/null)
+		type=$(loginctl show-session "$session" -p Type --value 2>/dev/null)
+		[ "$class" = user ] && [ "$state" = active ] || continue
+		[ "$type" = wayland ] || [ "$type" = x11 ] || continue
+		user=$(loginctl show-session "$session" -p Name --value 2>/dev/null)
+		shell=""
+		for proc in gnome-shell plasmashell cinnamon cage; do
+			if pgrep -u "$user" -x "$proc" >/dev/null 2>&1; then
+				shell=$proc
+			fi
+		done
+		[ -n "$shell" ] || continue
+		fact session_type "$type"
+		fact session_desktop "$(loginctl show-session "$session" -p Desktop --value 2>/dev/null)"
+		fact session_user "$user"
+		fact shell "$shell"
+		# The installer's launcher: on the live user's desktop, or missing.
+		if [ -f /usr/share/applications/linuxlive-install.desktop ]; then
+			if [ -f "$(getent passwd "$user" | cut -d: -f6)/Desktop/linuxlive-install.desktop" ]; then
+				fact installer_icon desktop
+			else
+				fact installer_icon menu-only
+			fi
+			# What the installer's window sees: it lists the disks as this user,
+			# through sudo -n, exactly so (usr/libexec/linuxlive/installer).
+			if listing=$(runuser -u "$user" -- sudo -n /usr/libexec/linuxlive/install-to-disk --list-disks 2>&1); then
+				fact installer_disks "$(printf '%s\n' "$listing" | grep -c .)"
+			else
+				fact installer_disks "refused: $(printf '%s' "$listing" | tail -n 1)"
+			fi
+		fi
+		if [ "$shell" = plasmashell ]; then
+			fact kde_launcher_icon "$(kde_launcher_icons "$user")"
+		fi
+		fact failed_units "$(failed_units)"
+		# The distro's first-boot scripts ran before the login screen (installed systems).
+		if [ -f /var/lib/linuxlive/first-boot.log ]; then
+			while read -r name rc; do fact first_boot_script "$name=$rc"; done </var/lib/linuxlive/first-boot.log
+		fi
+		if [ -d /sys/fs/selinux ]; then
+			fact avc_denials "$(journalctl -k -b --no-pager 2>/dev/null | grep -c 'avc:  denied')"
+			journalctl -k -b --no-pager -o cat 2>/dev/null | grep 'avc:  denied' | head -n 5 |
+				while IFS= read -r line; do fact avc "$line"; done
+		fi
+		shell_pid=$(pgrep -u "$user" -x "$shell" 2>/dev/null | head -n 1)
+		session_lang=$(environ_of "$shell_pid" LANG)
+		fact session_lang "$session_lang"
+		fact shell_translation "$(shell_translation "$session_lang" "$shell")"
+		fact keyboard_session "$(session_keyboard "$user" "$shell" "$shell_pid")"
+		desktops=""
+		for name in gnome-shell plasmashell cinnamon; do
+			if pgrep -x "$name" >/dev/null 2>&1; then desktops="$desktops $name"; fi
+		done
+		desktops=${desktops# }
+		fact desktop_shells "${desktops:-none}"
+		say LINUXLIVE_SESSION_READY
+		ready=$(date +%s)
+		# A desktop shell can start and then crash (Cinnamon then shows its
+		# fallback-mode dialog). Look again once the session has settled, and
+		# keep the session's own error lines if the shell is gone.
+		sleep 30
+		pid=$(pgrep -u "$user" -x "$shell" 2>/dev/null | head -n 1)
+		if [ -n "$pid" ]; then
+			fact shell_after_settle "$shell"
+		else
+			fact shell_after_settle none
+			session_errors "$user"
+		fi
+		# Units that failed later, such as ones started after login.
+		fact failed_units_after_settle "$(failed_units)"
+		# A first-login welcome wizard (upstream's, with upstream's artwork), if one runs.
+		wizards=$(pgrep -u "$user" -a -f 'initial-setup|desktop-provision|ubuntu-welcome|plasma-welcome|plasma-setup' 2>/dev/null |
+			awk '{print $2}' | xargs -r -n 1 basename | sort -u | tr '\n' ' ' | sed 's/ $//')
+		fact first_login_wizard "${wizards:-none}"
+		# The distro's first-login scripts, which the session started at login.
+		if [ -d /usr/lib/linuxlive/first-login.d ]; then
+			home=$(getent passwd "$user" | cut -d: -f6)
+			tries=0
+			while [ ! -e "$home/.local/state/linuxlive/first-login-done" ] && [ "$tries" -lt 30 ]; do
+				tries=$((tries + 1))
+				sleep 2
+			done
+			if [ -f "$home/.local/state/linuxlive/first-login.log" ]; then
+				while read -r name rc; do fact first_login_script "$name=$rc"; done <"$home/.local/state/linuxlive/first-login.log"
+			else
+				fact first_login_script none
+			fi
+		fi
+		if [ -n "$kiosk_app" ] && [ "$user" = "$kiosk_user" ]; then
+			# Kiosk mode: the app, full screen in Cage. Firefox writes its
+			# session file within about 15 seconds of opening a page.
+			apps="" tries=0
+			while [ "$tries" -lt 30 ]; do
+				apps=$(running_apps "$user")
+				case " $apps " in *" $kiosk_app "*) break ;; esac
+				tries=$((tries + 1))
+				sleep 2
+			done
+			fact kiosk_apps "${apps:-none}"
+			if [ "$kiosk_app" = org.mozilla.firefox ]; then
+				state="" tries=0
+				while [ "$tries" -lt 30 ]; do
+					state=$(firefox_state "$user")
+					if printf '%s\n' "$state" | grep -q '^open '; then break; fi
+					tries=$((tries + 1))
+					sleep 2
+				done
+				printf '%s\n' "$state" | while read -r kind value; do
+					case $kind in
+					open) fact firefox_open "$value" ;;
+					bookmark) fact firefox_bookmark "$value" ;;
+					esac
+				done
+			fi
+		fi
+		fact update_notifiers "$(update_notifiers "$user")"
+		fact gnome_software_updates "$(gnome_software_updates "$user" "$pid")"
+		if [ "$shell" = plasmashell ]; then
+			fact plasma_welcome_installer "$(welcome_installer "$user")"
+		fi
+		if systemctl cat casper-md5check.service >/dev/null 2>&1; then
+			fact casper_md5check "$(casper_md5check)"
+		fi
+		[ -n "$pid" ] || exit 0
+		# Then keep watching until the test harness stops the VM: Cinnamon has
+		# crashed a minute after login, after the look above. Its launcher then
+		# starts metacity and shows the fallback-mode dialog, with a process
+		# still called cinnamon-launch(er), so the shell's own pid is watched.
+		fact shell_watch "$shell"
+		while [ -d "/proc/$pid" ] && ! pgrep -u "$user" -x metacity >/dev/null 2>&1; do
+			sleep 2
+		done
+		fact shell_crashed "$(($(date +%s) - ready))"
+		session_errors "$user"
+		exit 0
+	done
+	sleep 5
+done
+say LINUXLIVE_SESSION_TIMEOUT
+exit 1

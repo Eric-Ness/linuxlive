@@ -59,6 +59,7 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         "initrd_plymouth_themes": ["linuxlive linuxlive-text spinner" if base == "ubuntu" else "details linuxlive text"],
         "selinux": ["absent" if base == "ubuntu" else "Enforcing"],
         "flatpak": ["org.mozilla.firefox", "org.videolan.VLC"],
+        "hostname": ["testos"],
         "issue": ["TestOS 0.1 \\n \\l" if base == "ubuntu" else "\\S"],
     }
     if base == "ubuntu":
