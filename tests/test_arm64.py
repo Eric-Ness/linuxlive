@@ -149,3 +149,24 @@ def test_amd64_results_still_need_bios(workspace, tmp_path):
     results = make_results(tmp_path / "r")
     (results / "modes" / "bios-cd" / "result.json").unlink()
     assert any("bios-cd: result.json is missing" in f for f in failures(verify_results(spec, results, expect_commit=COMMIT)))
+
+
+def test_apps_flathub_builds_only_for_pcs_cannot_go_on_arm64(workspace):
+    with pytest.raises(SpecError) as err:
+        load_spec(write_spec(workspace, spec_data(apps=["firefox", "steam"], arches=["amd64", "arm64"])))
+    assert "apps: steam is not built for arm64 on Flathub; take it out or drop arm64 from arches" in err.value.problems
+    assert load_spec(write_spec(workspace, spec_data(apps=["firefox", "steam"]))).apps == ("firefox", "steam")
+
+
+def test_the_flathub_check_uses_each_arch(workspace, monkeypatch, capsys):
+    from linuxlive import cli, flathub
+
+    fake = {
+        "/appstream/com.example.PcOnly": {"id": "com.example.PcOnly", "name": "PC Only", "type": "desktop-application"},
+        "/summary/com.example.PcOnly": {"arches": ["x86_64"], "metadata": {}},
+        "/verification/com.example.PcOnly/status": {"verified": False},
+    }
+    monkeypatch.setattr(flathub, "_get", lambda path, attempts=4: fake.get(path))
+    spec = write_spec(workspace, spec_data(flathub=["com.example.PcOnly"], arches=["amd64", "arm64"]))
+    assert cli.main(["validate", "--online", str(spec)]) == 2
+    assert "com.example.PcOnly is not built for aarch64 on Flathub (only x86_64)" in capsys.readouterr().err

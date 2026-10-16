@@ -225,6 +225,12 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
             "(Fedora's live boot keeps a saved layer only on a partition nothing makes on a written stick)"
         )
 
+    arches = tuple(raw.get("arches") or ("amd64",))
+    for app in apps:
+        missing = [a for a in arches if app in catalog.apps and a not in catalog.apps[app].arches]
+        if missing:
+            problems.append(f"apps: {app} is not built for {', '.join(missing)} on Flathub; take it out or drop {', '.join(missing)} from arches")
+
     if problems:
         raise SpecError(path, problems)
     accent = branding.get("accent_color")
@@ -250,7 +256,7 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
         firefox=firefox,
         kiosk=kiosk,
         persistence=persistence,
-        arches=tuple(raw.get("arches") or ("amd64",)),
+        arches=arches,
     )
 
 

@@ -45,7 +45,10 @@ def fetch(url: str, attempts: int = 5) -> tuple[int, bytes]:
     return 0, b""
 
 
-def flathub(app_id: str) -> str | None:
+FLATHUB_ARCHES = {"x86_64": "amd64", "aarch64": "arm64"}
+
+
+def flathub(app_id: str, arches: tuple[str, ...] = ("amd64",)) -> str | None:
     status, body = fetch(f"https://flathub.org/api/v2/appstream/{app_id}")
     if status != 200:
         return f"Flathub returned HTTP {status}"
@@ -58,6 +61,10 @@ def flathub(app_id: str) -> str | None:
     metadata = (json.loads(body or b"{}") if status == 200 else {}).get("metadata") or {}
     if metadata.get("runtimeIsEol"):
         return f"its runtime {metadata.get('runtime')} is end-of-life: the app has moved or stopped"
+    # The catalog's arches for the app must be the ones Flathub builds.
+    built = sorted(FLATHUB_ARCHES[a] for a in (json.loads(body or b"{}") if status == 200 else {}).get("arches", []) if a in FLATHUB_ARCHES)
+    if built != sorted(arches):
+        return f"Flathub builds it for {', '.join(built) or 'nothing'}, the catalog says {', '.join(sorted(arches))}"
     return None
 
 
@@ -96,7 +103,7 @@ def main() -> int:
     catalog = load_catalog()
     checks: list[tuple[str, Callable[[], str | None]]] = []
     for app in catalog.apps.values():
-        checks.append((f"flatpak {app.flatpak}", lambda a=app.flatpak: flathub(a)))
+        checks.append((f"flatpak {app.flatpak}", lambda a=app.flatpak, arches=app.arches: flathub(a, arches)))
     for base in catalog.bases.values():
         replacements = [new for _old, new in base.replaced_packages]
         packages = [*base.system_packages, *base.live_packages, *base.kernel_packages, *base.efi_packages, *replacements]

@@ -83,25 +83,26 @@ desktops:
       livesys_session: cinnamon
 
 # Apps are installed from Flathub, so one ID works on every base. kiosk_args
-# go after the app when it runs in kiosk mode.
+# go after the app when it runs in kiosk mode; arches limits an app Flathub
+# builds for fewer CPUs (check_catalog.py checks it against Flathub).
 apps:
   firefox: {name: Firefox, flatpak: org.mozilla.firefox, kiosk_args: [--kiosk]}
   chromium: {name: Chromium, flatpak: org.chromium.Chromium, kiosk_args: [--kiosk, --noerrdialogs]}
-  thunderbird: {name: Thunderbird, flatpak: org.mozilla.thunderbird}
+  thunderbird: {name: Thunderbird, flatpak: org.mozilla.thunderbird, arches: [amd64]}
   libreoffice: {name: LibreOffice, flatpak: org.libreoffice.LibreOffice}
   vlc: {name: VLC, flatpak: org.videolan.VLC}
   gimp: {name: GIMP, flatpak: org.gimp.GIMP}
   inkscape: {name: Inkscape, flatpak: org.inkscape.Inkscape}
   krita: {name: Krita, flatpak: org.kde.krita}
-  blender: {name: Blender, flatpak: org.blender.Blender}
+  blender: {name: Blender, flatpak: org.blender.Blender, arches: [amd64]}
   audacity: {name: Audacity, flatpak: org.audacityteam.Audacity}
-  obs-studio: {name: OBS Studio, flatpak: com.obsproject.Studio}
+  obs-studio: {name: OBS Studio, flatpak: com.obsproject.Studio, arches: [amd64]}
   kdenlive: {name: Kdenlive, flatpak: org.kde.kdenlive}
   vscode: {name: Visual Studio Code, flatpak: com.visualstudio.code}
-  steam: {name: Steam, flatpak: com.valvesoftware.Steam}
-  lutris: {name: Lutris, flatpak: net.lutris.Lutris}
-  heroic: {name: Heroic Games Launcher, flatpak: com.heroicgameslauncher.hgl}
-  discord: {name: Discord, flatpak: com.discordapp.Discord}
+  steam: {name: Steam, flatpak: com.valvesoftware.Steam, arches: [amd64]}
+  lutris: {name: Lutris, flatpak: net.lutris.Lutris, arches: [amd64]}
+  heroic: {name: Heroic Games Launcher, flatpak: com.heroicgameslauncher.hgl, arches: [amd64]}
+  discord: {name: Discord, flatpak: com.discordapp.Discord, arches: [amd64]}
   gcompris: {name: GCompris, flatpak: org.kde.gcompris}
   tuxpaint: {name: Tux Paint, flatpak: org.tuxpaint.Tuxpaint}
   flatseal: {name: Flatseal, flatpak: com.github.tchx84.Flatseal}
