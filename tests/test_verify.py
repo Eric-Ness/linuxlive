@@ -78,9 +78,10 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         facts["installer_icon"] = ["desktop"]
         facts["installer_disks"] = ["1"]
         facts["first_login_wizard"] = ["none"]
-        facts["flatpak_runs"] = ["org.mozilla.firefox=ok"]
+        facts["flatpak_runs"] = ["org.mozilla.firefox=ok", "org.videolan.VLC=ok"]
         if base == "ubuntu":
             facts["casper_md5check"] = ["pass"]
+            facts["installer_launcher"] = ["trusted=true mode=755"]
         if base == "fedora":  # TestOS on Fedora is KDE
             facts["kde_launcher_icon"] = ["linuxlive-logo"]
             facts["plasma_welcome_installer"] = ["none"]
@@ -124,6 +125,7 @@ def make_results(root: Path, base: str = "ubuntu") -> Path:
     installed["facts"].update(boot_medium=["disk"], login_users=["tester"], session_user=["tester"],
                               flatpak=live["facts"]["flatpak"], first_login_wizard=["none"], installer_icon=["menu-only"],
                               first_boot_script=["10-first-boot.sh=0"])
+    installed["facts"].pop("installer_launcher", None)  # no launcher on the installed desktop
     if base == "ubuntu":
         installed["facts"].update(root_fstype=["ext4"], casper_installed=["no"])
     else:
@@ -255,10 +257,28 @@ BREAKS = {
     ),
     "app missing": (*_set_fact(SESSION_MODE, "flatpak", ["org.mozilla.firefox"]), "Flatpak org.videolan.VLC (VLC) is installed"),
     "apps cannot start in the live session": (
-        *_set_fact(SESSION_MODE, "flatpak_runs", ["org.mozilla.firefox=failed: bwrap: Creating new namespace failed: Permission denied error: ldconfig failed, exit status 256"]),
-        "a Flatpak app starts in the session ('org.mozilla.firefox=failed: bwrap",
+        *_set_fact(SESSION_MODE, "flatpak_runs", [
+            "org.mozilla.firefox=failed: bwrap: Creating new namespace failed: Permission denied error: ldconfig failed, exit status 256",
+            "org.videolan.VLC=ok",
+        ]),
+        "Flatpak org.mozilla.firefox (Firefox) starts in the session ('failed: bwrap",
     ),
-    "apps cannot start on the installed disk": (*_set_fact("installed-uefi-sb", "flatpak_runs", []), "installed-uefi-sb: a Flatpak app starts in the session (''"),
+    "the second app cannot start": (
+        *_set_fact(SESSION_MODE, "flatpak_runs", ["org.mozilla.firefox=ok"]),
+        "Flatpak org.videolan.VLC (VLC) starts in the session (None)",
+    ),
+    "apps cannot start on the installed disk": (
+        *_set_fact("installed-uefi-sb", "flatpak_runs", []),
+        "installed-uefi-sb: Flatpak org.mozilla.firefox (Firefox) starts in the session (None)",
+    ),
+    "the installer's desktop launcher is untrusted": (
+        *_set_fact(SESSION_MODE, "installer_launcher", ["trusted=unset mode=755"]),
+        "a double-click on the installer's desktop launcher starts it (installer_launcher 'trusted=unset mode=755')",
+    ),
+    "the installer's desktop launcher is not executable": (
+        *_set_fact(SESSION_MODE, "installer_launcher", ["trusted=true mode=644"]),
+        "a double-click on the installer's desktop launcher starts it (installer_launcher 'trusted=true mode=644')",
+    ),
     "shell crashed after starting": (
         f"modes/{SESSION_MODE}/result.json",
         lambda d: d["facts"].update(shell_after_settle=["none"], session_error=["cinnamon[812]: segfault at 0 ip 00007f"]),
