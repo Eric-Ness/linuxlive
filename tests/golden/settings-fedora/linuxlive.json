@@ -4,6 +4,11 @@
       "flatpak": "org.mozilla.firefox",
       "id": "firefox",
       "name": "Firefox"
+    },
+    {
+      "flatpak": "org.kde.kcalc",
+      "id": "org.kde.kcalc",
+      "name": "org.kde.kcalc"
     }
   ],
   "base": {

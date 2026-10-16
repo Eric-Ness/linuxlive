@@ -25,6 +25,7 @@ version: "0.1"
 base: ubuntu            # ubuntu (26.04 LTS) or fedora (44)
 desktop: gnome          # gnome, kde or cinnamon
 apps: [firefox, vlc]    # catalog IDs, installed from Flathub
+flathub: [org.gnome.Chess]  # any other Flathub app, by its ID (since v0.6.0)
 branding:
   wallpaper: assets/wallpaper.png   # PNG or JPEG, at least 1280x720
   logo: assets/logo.png             # square PNG: 128, 256 or 512 px
@@ -56,6 +57,11 @@ firefox:                            # needs firefox in apps
 kiosk:
   app: firefox                      # one of apps: starts full screen, no desktop
 ```
+
+Apps in `flathub` are checked against Flathub's API by `validate --online`,
+which the build workflow runs first: each must exist, be an app (not a
+runtime) and be built for the ISO's CPU. Flathub's verified mark is shown,
+not required. A Flathub app can be the kiosk app too.
 
 Settings, Firefox's policies and kiosk mode are data, so a spec with only
 those (no scripts or repos) is one linuxlive.com's "Build it for me" builds.

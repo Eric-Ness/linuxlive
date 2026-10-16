@@ -7,6 +7,9 @@ base: fedora
 desktop: cinnamon
 apps:
   - vlc
+# Any app from Flathub, by its Flathub ID (checked with Flathub before the build).
+flathub:
+  - org.gnome.Chess
 branding:
   wallpaper: assets/wallpaper.png
   logo: assets/logo.png

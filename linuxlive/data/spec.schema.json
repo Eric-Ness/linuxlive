@@ -43,6 +43,13 @@
       "maxItems": 50,
       "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}
     },
+    "flathub": {
+      "description": "Any other apps from Flathub, by their Flathub ID, for example org.gnome.Chess. The build checks each with Flathub's API.",
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 50,
+      "items": {"type": "string", "maxLength": 255, "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(\\.[A-Za-z_][A-Za-z0-9_-]*){2,}$"}
+    },
     "branding": {
       "type": "object",
       "additionalProperties": false,
@@ -136,9 +143,9 @@
       "required": ["app"],
       "properties": {
         "app": {
-          "description": "The app, one of apps.",
+          "description": "The app: one of apps, or a Flathub ID from flathub.",
           "type": "string",
-          "pattern": "^[a-z0-9][a-z0-9-]*$"
+          "pattern": "^([a-z0-9][a-z0-9-]*|[A-Za-z_][A-Za-z0-9_-]*(\\.[A-Za-z_][A-Za-z0-9_-]*){2,})$"
         }
       }
     },
