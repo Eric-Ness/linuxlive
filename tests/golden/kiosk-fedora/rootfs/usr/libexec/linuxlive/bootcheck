@@ -406,6 +406,14 @@ def lz4_block(src):
 
 
 root = sys.argv[1]
+opened, marked = set(), set()
+
+
+def say(kind, url):
+    (opened if kind == "open" else marked).add(url)
+    print(kind, url)
+
+
 for path in sorted(glob.glob(root + "/**/sessionstore-backups/recovery.jsonlz4", recursive=True)):
     data = open(path, "rb").read()
     if data[:8] != b"mozLz40\0":
@@ -415,7 +423,7 @@ for path in sorted(glob.glob(root + "/**/sessionstore-backups/recovery.jsonlz4",
         for tab in window.get("tabs", []):
             entries = tab.get("entries") or []
             if entries:
-                print("open", entries[min(tab.get("index", 1), len(entries)) - 1].get("url", ""))
+                say("open", entries[min(tab.get("index", 1), len(entries)) - 1].get("url", ""))
 for path in sorted(glob.glob(root + "/**/places.sqlite", recursive=True)):
     work = tempfile.mkdtemp()
     for suffix in ("", "-wal"):
@@ -423,12 +431,18 @@ for path in sorted(glob.glob(root + "/**/places.sqlite", recursive=True)):
             shutil.copy(path + suffix, os.path.join(work, "places.sqlite" + suffix))
     db = sqlite3.connect(os.path.join(work, "places.sqlite"))
     for (url,) in db.execute("SELECT p.url FROM moz_bookmarks b JOIN moz_places p ON b.fk = p.id WHERE b.type = 1 ORDER BY b.id"):
-        print("bookmark", url)
+        say("bookmark", url)
     # Pages Firefox has loaded: its history, written as each page loads.
     for (url,) in db.execute("SELECT DISTINCT p.url FROM moz_historyvisits v JOIN moz_places p ON v.place_id = p.id ORDER BY v.id"):
-        print("open", url)
+        say("open", url)
     db.close()
     shutil.rmtree(work, ignore_errors=True)
+# Complete once a page is open and every bookmark in the system policy is in:
+# Firefox adds the policy's bookmarks a few seconds apart.
+wanted = set()
+for policy in glob.glob("/var/lib/flatpak/extension/org.mozilla.firefox.systemconfig/*/stable/policies/policies.json"):
+    wanted |= {b.get("URL", "") for b in json.load(open(policy)).get("policies", {}).get("Bookmarks", [])}
+print("complete", "yes" if opened and wanted <= marked else "no")
 PY
 }
 
@@ -555,7 +569,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 				state="" tries=0
 				while [ "$tries" -lt 30 ]; do
 					state=$(firefox_state "$user")
-					if printf '%s\n' "$state" | grep -q '^open '; then break; fi
+					if printf '%s\n' "$state" | grep -qx 'complete yes'; then break; fi
 					tries=$((tries + 1))
 					sleep 2
 				done
