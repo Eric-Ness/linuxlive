@@ -44,6 +44,7 @@
             "URL": "https://linuxlive.com/library/"
           }
         ],
+        "DisableProfileImport": true,
         "DisplayBookmarksToolbar": "always",
         "DontCheckDefaultBrowser": true,
         "Homepage": {
@@ -53,11 +54,19 @@
         },
         "NoDefaultBookmarks": true,
         "OverrideFirstRunPage": "",
-        "OverridePostUpdatePage": ""
+        "OverridePostUpdatePage": "",
+        "SkipTermsOfUse": true,
+        "UserMessaging": {
+          "ExtensionRecommendations": false,
+          "FeatureRecommendations": false,
+          "MoreFromMozilla": false,
+          "SkipOnboarding": true,
+          "UrlbarInterventions": false
+        }
       }
     },
     "hidden_apps": [
-      "yelp",
+      "org.gnome.Yelp",
       "org.gnome.Ptyxis"
     ],
     "hostname": "aula-1",

@@ -20,7 +20,7 @@ settings:
   hostname: aula-1
   autologin: true
   hidden_apps:
-    - yelp
+    - org.gnome.Yelp
     - org.gnome.Ptyxis
 # Save files and settings on the USB stick (Ubuntu only, since v0.7.0).
 persistence: true

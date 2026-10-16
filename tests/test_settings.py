@@ -179,6 +179,8 @@ def test_firefox_policies(workspace):
     assert policies["OverrideFirstRunPage"] == ""
     assert policies["Bookmarks"] == [{"Title": 'Schule "A"', "URL": "https://example.org/a", "Placement": "toolbar"}]
     assert policies["NoDefaultBookmarks"] is True
+    assert policies["SkipTermsOfUse"] is True and policies["DisableProfileImport"] is True
+    assert policies["UserMessaging"]["SkipOnboarding"] is True
     tmpfiles = text(ctx, "rootfs/usr/lib/tmpfiles.d/linuxlive-firefox.conf")
     assert "L+ /var/lib/flatpak/extension/org.mozilla.firefox.systemconfig/x86_64/stable - - - - /usr/lib/linuxlive/firefox\n" in tmpfiles
     # Only bookmarks: no home page policy.
@@ -373,7 +375,7 @@ def _fact(results: Path, mode: str, key: str, value) -> None:
         ("settings-ubuntu", SESSION_MODE, "keyboard_system", ["us"], "system keyboard layout is 'us'"),
         ("settings-ubuntu", SESSION_MODE, "timezone", ["Etc/UTC"], "time zone is 'Etc/UTC', expected 'Europe/Madrid'"),
         ("settings-ubuntu", SESSION_MODE, "hostname", ["borne-linux"], "computer name is 'borne-linux', expected 'aula-1'"),
-        ("settings-ubuntu", SESSION_MODE, "hidden_app", ["yelp=shown", "org.gnome.Ptyxis=hidden"], "menu entry yelp is not shown ('shown')"),
+        ("settings-ubuntu", SESSION_MODE, "hidden_app", ["org.gnome.Yelp=shown", "org.gnome.Ptyxis=hidden"], "menu entry org.gnome.Yelp is not shown ('shown')"),
         ("settings-ubuntu", SESSION_MODE, "firefox_policies", ["0" * 64], "Firefox's system policies are the spec's"),
         ("settings-ubuntu", "installed-uefi-sb", "autologin_users", ["none"], "the spec's automatic login is on for 'tester'"),
         ("settings-ubuntu", "installed-uefi-sb", "session_lang", ["en_US.UTF-8"], "installed-uefi-sb: the session runs in 'en_US.UTF-8'"),

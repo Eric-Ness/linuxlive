@@ -87,6 +87,18 @@ def firefox_policies(plan: Plan) -> dict | None:
         # default bookmarks are imported over whichever policy bookmark landed first.
         policies["NoDefaultBookmarks"] = True
     policies["DontCheckDefaultBrowser"] = True
+    # No first-run dialogs over the distro's own start (a kiosk showed one,
+    # blank, over its home page): terms of use, onboarding, importing from
+    # another browser, Mozilla's suggestions.
+    policies["SkipTermsOfUse"] = True
+    policies["DisableProfileImport"] = True
+    policies["UserMessaging"] = {
+        "SkipOnboarding": True,
+        "FeatureRecommendations": False,
+        "ExtensionRecommendations": False,
+        "MoreFromMozilla": False,
+        "UrlbarInterventions": False,
+    }
     return {"policies": policies}
 
 

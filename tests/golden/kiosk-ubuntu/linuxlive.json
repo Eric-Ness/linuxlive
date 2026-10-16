@@ -49,6 +49,7 @@
             "URL": "https://linuxlive.com/learn/"
           }
         ],
+        "DisableProfileImport": true,
         "DisplayBookmarksToolbar": "always",
         "DontCheckDefaultBrowser": true,
         "Homepage": {
@@ -58,7 +59,15 @@
         },
         "NoDefaultBookmarks": true,
         "OverrideFirstRunPage": "",
-        "OverridePostUpdatePage": ""
+        "OverridePostUpdatePage": "",
+        "SkipTermsOfUse": true,
+        "UserMessaging": {
+          "ExtensionRecommendations": false,
+          "FeatureRecommendations": false,
+          "MoreFromMozilla": false,
+          "SkipOnboarding": true,
+          "UrlbarInterventions": false
+        }
       }
     },
     "hidden_apps": [],

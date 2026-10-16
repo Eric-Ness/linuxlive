@@ -7,6 +7,15 @@
     },
     "OverrideFirstRunPage": "",
     "OverridePostUpdatePage": "",
-    "DontCheckDefaultBrowser": true
+    "DontCheckDefaultBrowser": true,
+    "SkipTermsOfUse": true,
+    "DisableProfileImport": true,
+    "UserMessaging": {
+      "SkipOnboarding": true,
+      "FeatureRecommendations": false,
+      "ExtensionRecommendations": false,
+      "MoreFromMozilla": false,
+      "UrlbarInterventions": false
+    }
   }
 }

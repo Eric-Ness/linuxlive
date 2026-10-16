@@ -42,6 +42,7 @@
     "autologin": true,
     "firefox": {
       "policies": {
+        "DisableProfileImport": true,
         "DontCheckDefaultBrowser": true,
         "Homepage": {
           "Locked": false,
@@ -49,7 +50,15 @@
           "URL": "https://linuxlive.com/learn/"
         },
         "OverrideFirstRunPage": "",
-        "OverridePostUpdatePage": ""
+        "OverridePostUpdatePage": "",
+        "SkipTermsOfUse": true,
+        "UserMessaging": {
+          "ExtensionRecommendations": false,
+          "FeatureRecommendations": false,
+          "MoreFromMozilla": false,
+          "SkipOnboarding": true,
+          "UrlbarInterventions": false
+        }
       }
     },
     "hidden_apps": [
