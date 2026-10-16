@@ -165,6 +165,11 @@ for try in 1 2 3; do
 	fi
 	if [ "$try" -lt 3 ] && grep -qiE 'pinging container registry|TLS handshake timeout|i/o timeout|request canceled while waiting for connection' "$log"; then
 		progress "$pct" "The download timed out; trying again"
+		# Unmount whatever the failed try left mounted on the disk, so the
+		# next one can wipe it.
+		lsblk -nrpo NAME "$disk" 2>/dev/null | while read -r dev; do
+			findmnt -rno TARGET -S "$dev" 2>/dev/null | sort -r | while read -r m; do umount "$m" 2>/dev/null || umount -l "$m" 2>/dev/null || true; done
+		done
 		sleep 10
 		continue
 	fi

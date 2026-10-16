@@ -6,11 +6,27 @@
 # GNOME's desktop icons (DING) start a .desktop file only when it is
 # executable and marked trusted. Until then they show it with a red cross and
 # its file name, and a double-click only says it is untrusted. touch makes
-# them look at it again if they drew it first.
+# them look at it again if they drew it first. The metadata store
+# (gvfsd-metadata) may not answer yet early in the session: try for up to a
+# minute.
 launcher=$HOME/Desktop/linuxlive-install.desktop
-if [ -f "$launcher" ] && command -v gio >/dev/null 2>&1; then
-	gio set "$launcher" metadata::trusted true 2>/dev/null && touch "$launcher"
-fi
+trust_launcher() {
+	[ -f "$launcher" ] && command -v gio >/dev/null 2>&1 || return 0
+	for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+		if gio set "$launcher" metadata::trusted true 2>/dev/null &&
+			gio info -a metadata::trusted "$launcher" 2>/dev/null | grep -q 'trusted: true'; then
+			touch "$launcher"
+			return 0
+		fi
+		sleep 5
+	done
+}
 
-grep -qw linuxlive.install /proc/cmdline || exit 0
+if ! grep -qw linuxlive.install /proc/cmdline; then
+	trust_launcher
+	exit 0
+fi
+# The installer opens at once; the launcher is marked meanwhile (this
+# process lives on as the installer, so the marking is not cut short).
+trust_launcher &
 exec /usr/libexec/linuxlive/installer

@@ -618,12 +618,20 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 			uid=$(id -u "$user")
 			home=$(getent passwd "$user" | cut -d: -f6)
 			for app in $(flatpak list --system --app --columns=application 2>/dev/null); do
-				if out=$(runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" \
-					timeout 120 flatpak run --command=true "$app" 2>&1); then
-					fact flatpak_runs "$app=ok"
-				else
-					fact flatpak_runs "$app=failed: $(printf '%s' "$out" | tail -n 3 | tr '\n' ' ')"
-				fi
+				# Up to three tries, 15 seconds apart: a slow (emulated) session's
+				# helpers may not be up yet. A sandbox that cannot start fails every time.
+				result="" try=0
+				while [ "$try" -lt 3 ]; do
+					try=$((try + 1))
+					if out=$(runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" \
+						timeout 120 flatpak run --command=true "$app" 2>&1); then
+						result=ok
+						break
+					fi
+					result="failed: $(printf '%s' "$out" | tail -n 3 | tr '\n' ' ')"
+					[ "$try" -lt 3 ] && sleep 15
+				done
+				fact flatpak_runs "$app=$result"
 			done
 		fi
 		# The installer's launcher on the desktop, as GNOME's desktop icons (DING)
