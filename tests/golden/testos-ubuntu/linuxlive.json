@@ -62,6 +62,7 @@
     "file_name": "testos-0.1-ubuntu-amd64.iso",
     "kernel_args": "boot=casper quiet splash ---",
     "layout": "casper",
+    "persistence": false,
     "volume_id": "TESTOS_0_1"
   },
   "name": "TestOS",

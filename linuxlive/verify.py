@@ -26,7 +26,7 @@ from linuxlive.compiler.plan import LOGO_NAME, Plan, plan_build
 from linuxlive.png import ImageError, dominant_hue, hue_fraction, image_info, read_png, screen_variety
 from linuxlive.spec import Spec
 
-CHECKS = ("iso", "boot", "session", "install")
+CHECKS = ("iso", "boot", "session", "install", "persistence")
 BOOT_MODES = ("bios-cd", "uefi-cd", "uefi-sb-cd", "bios-usb", "uefi-usb")
 SECURE_BOOT_MODE = "uefi-sb-cd"
 SESSION_MODE = "uefi-usb"
@@ -475,6 +475,36 @@ def check_install(plan: Plan, results: Path) -> list[Outcome]:
     return c.outcomes
 
 
+PERSIST_MODES = ("persist-1", "persist-2")
+
+
+def check_persistence(plan: Plan, results: Path) -> list[Outcome]:
+    """Persistence: one stick booted twice. The first boot saves to the
+    partition casper made; the second finds the system's and the user's
+    markers from the first. A spec without persistence has nothing to check."""
+    c = _Collector("persistence")
+    if not plan.spec.persistence:
+        return c.outcomes
+    first = _load(results / "modes" / "persist-1" / "result.json")
+    second = _load(results / "modes" / "persist-2" / "result.json")
+    for mode, result in zip(PERSIST_MODES, (first, second)):
+        if not c.expect(result is not None, f"{mode}: result.json is present"):
+            return c.outcomes
+        c.expect(result.get("outcome") == "session", f"{mode}: the live desktop came up from the stick (outcome {result.get('outcome')!r})")
+        cmdline = (_fact(result, "cmdline") or "").split()
+        c.expect("persistent" in cmdline, f"{mode}: the default boot entry saves changes (cmdline {' '.join(cmdline)!r})")
+        partition = _fact(result, "persistence_partition") or "none"
+        c.expect(partition != "none", f"{mode}: casper's writable partition is on the stick ({partition!r})")
+    c.expect(_fact(first, "persistence_seen") == "none", f"persist-1: a new stick has nothing saved yet ({_fact(first, 'persistence_seen')!r})")
+    boot_one = _fact(first, "boot_id")
+    c.expect(bool(boot_one) and _fact(second, "persistence_seen") == boot_one,
+             f"persist-2: the system kept what the first boot wrote (saw {_fact(second, 'persistence_seen')!r}, first boot {boot_one!r})")
+    c.expect(bool(boot_one) and _fact(second, "persistence_home_seen") == boot_one,
+             f"persist-2: the user's files were kept (saw {_fact(second, 'persistence_home_seen')!r}, first boot {boot_one!r})")
+    c.expect(_fact(second, "boot_id") != boot_one, "persist-2 is a second boot, not the first one again")
+    return c.outcomes
+
+
 def verify_results(
     spec: Spec,
     results: Path,
@@ -497,4 +527,6 @@ def verify_results(
         outcomes += check_session(plan, results)
     if "install" in checks:
         outcomes += check_install(plan, results)
+    if "persistence" in checks:
+        outcomes += check_persistence(plan, results)
     return outcomes

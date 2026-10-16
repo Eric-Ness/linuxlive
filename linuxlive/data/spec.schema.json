@@ -136,6 +136,10 @@
         }
       }
     },
+    "persistence": {
+      "description": "Save files and settings back to the USB stick the live system runs from. Ubuntu-based distros only, for now.",
+      "type": "boolean"
+    },
     "kiosk": {
       "description": "Kiosk mode: the computer starts straight into one app, full screen, with no desktop around it.",
       "type": "object",

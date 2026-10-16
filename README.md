@@ -56,12 +56,24 @@ firefox:                            # needs firefox in apps
     - {name: Example, url: https://example.org/}
 kiosk:
   app: firefox                      # one of apps: starts full screen, no desktop
+persistence: true                   # save changes on the USB stick (Ubuntu, since v0.7.0)
 ```
 
 Apps in `flathub` are checked against Flathub's API by `validate --online`,
 which the build workflow runs first: each must exist, be an app (not a
 runtime) and be built for the ISO's CPU. Flathub's verified mark is shown,
 not required. A Flathub app can be the kiosk app too.
+
+With `persistence`, the boot menu's first entry keeps the live system's
+changes (files, settings, apps added) on the USB stick: casper makes a
+partition labelled `writable` in the free space after the ISO the first time,
+and finds it again on every boot. A second entry starts clean without
+touching what was saved; Install always installs the clean system. CI boots a
+copy of the ISO on a bigger stick twice and checks the second boot finds
+what the first wrote, the system's and the user's. Fedora-based distros
+cannot have it yet: dmsquash-live keeps a persistent overlay only on a
+partition that something has to make on the stick beforehand, and nothing
+does that for a written ISO.
 
 Settings, Firefox's policies and kiosk mode are data, so a spec with only
 those (no scripts or repos) is one linuxlive.com's "Build it for me" builds.

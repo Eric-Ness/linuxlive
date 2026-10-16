@@ -177,6 +177,20 @@ autologin=$(
 	} | sed '/^$/d' | sort -u | tr '\n' ' ' | sed 's/ $//'
 )
 fact autologin_users "${autologin:-none}"
+# Persistence (casper's "persistent"): the partition the live system saves to,
+# and a marker from the boot before, if this stick has been booted already.
+boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
+fact boot_id "$boot_id"
+if grep -qw persistent /proc/cmdline; then
+	writable=$(blkid -L writable 2>/dev/null || blkid -L casper-rw 2>/dev/null)
+	fact persistence_partition "${writable:-none}"
+	if [ -n "$writable" ]; then fact persistence_mounted "$(findmnt -rno TARGET "$writable" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"; fi
+	marker=/var/lib/linuxlive/persistence-boot
+	if [ -f "$marker" ]; then fact persistence_seen "$(cat "$marker")"; else fact persistence_seen none; fi
+	mkdir -p /var/lib/linuxlive
+	printf '%s\n' "$boot_id" >"$marker"
+	sync
+fi
 say LINUXLIVE_BOOTED
 
 # The icons a user's Plasma application launchers show, from Plasma's saved
@@ -521,6 +535,14 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		done
 		desktops=${desktops# }
 		fact desktop_shells "${desktops:-none}"
+		if grep -qw persistent /proc/cmdline; then
+			# The user's own files persist too: a marker in their home.
+			home=$(getent passwd "$user" | cut -d: -f6)
+			mine="$home/.local/state/linuxlive/persistence-boot"
+			if [ -f "$mine" ]; then fact persistence_home_seen "$(cat "$mine")"; else fact persistence_home_seen none; fi
+			# shellcheck disable=SC2016 # expanded by the inner shell
+			runuser -u "$user" -- sh -c 'mkdir -p "$(dirname "$1")" && printf "%s\n" "$2" >"$1" && sync' sh "$mine" "$boot_id"
+		fi
 		say LINUXLIVE_SESSION_READY
 		ready=$(date +%s)
 		# A desktop shell can start and then crash (Cinnamon then shows its

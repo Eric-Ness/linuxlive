@@ -1,6 +1,7 @@
 # Example spec: Ubuntu 26.04 with GNOME, set up for a Spanish classroom. CI
 # builds and boots it to check every setting: language, keyboard, time zone,
-# computer name, automatic login, hidden menu entries and Firefox's policies.
+# computer name, automatic login, hidden menu entries and Firefox's policies,
+# and that files and settings are saved back to the USB stick.
 schema_version: 1
 name: Aula Linux
 version: "0.1"
@@ -21,6 +22,8 @@ settings:
   hidden_apps:
     - yelp
     - org.gnome.Ptyxis
+# Save files and settings on the USB stick (Ubuntu only, since v0.7.0).
+persistence: true
 firefox:
   homepage: https://linuxlive.com/
   bookmarks:
