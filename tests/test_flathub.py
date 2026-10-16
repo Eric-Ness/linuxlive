@@ -57,7 +57,8 @@ def test_flathub_apps_load_and_compile(workspace):
 def test_a_flathub_app_can_be_the_kiosk(workspace):
     ctx, plan = build_context(load_spec(write_spec(workspace, spec_data(flathub=["org.gnome.Chess"], kiosk={"app": "org.gnome.Chess"}))))
     assert plan.kiosk_app.flatpak == "org.gnome.Chess"
-    assert ctx.files()["rootfs/usr/libexec/linuxlive/kiosk-app"][0].decode().endswith("exec flatpak run org.gnome.Chess\n")
+    # On Ubuntu through Xwayland (catalog kiosk_x11).
+    assert ctx.files()["rootfs/usr/libexec/linuxlive/kiosk-app"][0].decode().endswith("exec flatpak run --nosocket=wayland --socket=x11 org.gnome.Chess\n")
 
 
 @pytest.mark.parametrize(
