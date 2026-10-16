@@ -2,7 +2,7 @@
 """Check that everything the catalog names exists upstream.
 
   - every app's Flatpak ID has a Flathub listing
-  - every Ubuntu package is in the release's amd64 archive
+  - every Ubuntu package is in the release's amd64 and arm64 archives
   - every Fedora package is in the release's repositories
   - every base container image tag exists
 
@@ -68,11 +68,11 @@ def flathub(app_id: str, arches: tuple[str, ...] = ("amd64",)) -> str | None:
     return None
 
 
-def ubuntu_package(release_codename: str, name: str) -> str | None:
-    status, body = fetch(f"https://packages.ubuntu.com/{release_codename}/amd64/{name}")
+def ubuntu_package(release_codename: str, name: str, arch: str = "amd64") -> str | None:
+    status, body = fetch(f"https://packages.ubuntu.com/{release_codename}/{arch}/{name}")
     text = body.decode("utf-8", "replace")
     if status != 200 or "No such package" in text or f"Package: {name}" not in text:
-        return f"not in Ubuntu {release_codename} for amd64"
+        return f"not in Ubuntu {release_codename} for {arch}"
     return None
 
 
@@ -128,6 +128,11 @@ def main() -> int:
             codename = UBUNTU_CODENAMES[base.release]
             for name in dict.fromkeys(packages):
                 checks.append((f"ubuntu {name}", lambda n=name, c=codename: ubuntu_package(c, n)))
+            # arm64: the same packages, with arm64's boot chain for amd64's.
+            arm = [n for n in packages if n not in (*base.efi_packages, *base.bootloader_packages)]
+            arm += [*base.packages("efi_packages", "arm64"), *base.packages("bootloader_packages", "arm64")]
+            for name in dict.fromkeys(arm):
+                checks.append((f"ubuntu arm64 {name}", lambda n=name, c=codename: ubuntu_package(c, n, "arm64")))
         elif base.id == "fedora":
             for name in dict.fromkeys(packages):
                 checks.append((f"fedora {name}", lambda n=name, r=base.release: fedora_package(r, n)))
