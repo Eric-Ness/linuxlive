@@ -119,6 +119,11 @@ def parse_hex(hex_colour: str) -> tuple[int, int, int]:
     return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
 
 
+def flathub_app(app_id: str) -> App:
+    """An app from the spec's flathub list: its Flathub ID is its id and name."""
+    return App(id=app_id, name=app_id, flatpak=app_id)
+
+
 def plan_build(spec: Spec, catalog: Catalog) -> Plan:
     base = catalog.bases[spec.base]
     desktop = catalog.desktops[spec.desktop]
@@ -140,7 +145,7 @@ def plan_build(spec: Spec, catalog: Catalog) -> Plan:
         base=base,
         desktop=desktop,
         variant=variant,
-        apps=tuple(catalog.apps[a] for a in spec.apps),
+        apps=tuple(catalog.apps[a] for a in spec.apps) + tuple(flathub_app(a) for a in spec.flathub),
         volid=volid,
         iso_name=f"{spec.id}-{safe_version}-{spec.base}-amd64.iso",
         marker=f"{MARKER_DIR}/linuxlive-{volid.lower()}",
@@ -153,7 +158,7 @@ def plan_build(spec: Spec, catalog: Catalog) -> Plan:
         language=catalog.languages[spec.settings.language] if spec.settings.language else None,
         keyboard=spec.settings.keyboard,
         hostname=spec.settings.hostname or spec.id,
-        kiosk_app=catalog.apps[spec.kiosk] if spec.kiosk else None,
+        kiosk_app=(catalog.apps.get(spec.kiosk) or flathub_app(spec.kiosk)) if spec.kiosk else None,
         kiosk_packages=catalog.kiosk_packages.get(spec.base, ()) if spec.kiosk else (),
         kiosk_x11=bool(spec.kiosk) and spec.base in catalog.kiosk_x11,
     )

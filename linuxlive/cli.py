@@ -9,6 +9,7 @@ from pathlib import Path
 
 from linuxlive import __version__
 from linuxlive.compiler import CompileError, compile_spec
+from linuxlive.flathub import FlathubError, check_apps
 from linuxlive.isoinspect import IsoError, inspect_iso
 from linuxlive.spec import SpecError, load_spec
 from linuxlive.verify import CHECKS, verify_results
@@ -16,7 +17,14 @@ from linuxlive.verify import CHECKS, verify_results
 
 def _validate(args) -> int:
     spec = load_spec(args.spec)
-    print(f"{args.spec}: valid ({spec.name} {spec.version}, {spec.base}, {spec.desktop}, {len(spec.apps)} apps)")
+    if args.online and spec.flathub:
+        problems, found = check_apps(spec.flathub)
+        for app in found:
+            print(f"  flathub: {app.id} ({app.name}){' verified' if app.verified else ''}, {', '.join(app.arches)}")
+        if problems:
+            raise SpecError(args.spec, problems)
+    extra = f" and {len(spec.flathub)} from Flathub" if spec.flathub else ""
+    print(f"{args.spec}: valid ({spec.name} {spec.version}, {spec.base}, {spec.desktop}, {len(spec.apps)} apps{extra})")
     return 0
 
 
@@ -61,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("validate", help="check a spec file")
     p.add_argument("spec")
+    p.add_argument("--online", action="store_true", help="also ask Flathub's API about the spec's flathub apps")
     p.set_defaults(func=_validate)
 
     p = sub.add_parser("compile", help="write a container build context for a spec")
@@ -92,6 +101,6 @@ def main(argv: list[str] | None = None) -> int:
         for problem in exc.problems:
             print(f"  - {problem}", file=sys.stderr)
         return 2
-    except (CompileError, IsoError, ValueError) as exc:
+    except (CompileError, IsoError, FlathubError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

@@ -112,6 +112,8 @@ class Spec:
     desktop: str
     apps: tuple[str, ...]
     branding: Branding
+    # Any other Flathub apps, by Flathub ID (checked online by validate --online).
+    flathub: tuple[str, ...] = ()
     # A distro's own additions: distribution packages, files, scripts and GitHub code.
     packages: tuple[str, ...] = ()
     files: tuple[ExtraFile, ...] = ()
@@ -181,6 +183,12 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
             known = ", ".join(sorted(catalog.apps))
             problems.append(f"apps: unknown app {app!r} (known apps: {known})")
 
+    flathub = tuple(raw.get("flathub") or ())
+    catalog_ids = {a.flatpak.lower(): a.id for a in catalog.apps.values()}
+    for i, app_id in enumerate(flathub):
+        if app_id.lower() in catalog_ids:
+            problems.append(f"flathub/{i}: {app_id} is in the catalog; list it in apps as {catalog_ids[app_id.lower()]!r}")
+
     branding = raw["branding"]
     wallpaper = (path.parent / branding["wallpaper"]).resolve()
     logo = (path.parent / branding["logo"]).resolve()
@@ -204,7 +212,7 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
             problems.append(f"repos: {repo.url} at {repo.commit} is listed twice")
         seen_repos.add(key)
 
-    settings, firefox, kiosk, option_problems = _resolve_options(raw, apps, catalog)
+    settings, firefox, kiosk, option_problems = _resolve_options(raw, apps + flathub, catalog)
     problems += option_problems
 
     if problems:
@@ -218,6 +226,7 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
         base=base,
         desktop=desktop,
         apps=apps,
+        flathub=flathub,
         branding=Branding(wallpaper=wallpaper, logo=logo, accent_color=accent.lower() if accent else None),
         packages=tuple(raw.get("packages") or ()),
         files=files,
@@ -280,7 +289,7 @@ def _resolve_options(raw: dict, apps: tuple[str, ...], catalog: Catalog) -> tupl
             firefox = None
     kiosk = (raw.get("kiosk") or {}).get("app")
     if kiosk is not None and kiosk not in apps:
-        problems.append(f"kiosk/app: {kiosk!r} must be one of the spec's apps")
+        problems.append(f"kiosk/app: {kiosk!r} must be one of the spec's apps or flathub apps")
     return settings, firefox, kiosk, problems
 
 

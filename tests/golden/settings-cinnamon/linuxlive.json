@@ -4,6 +4,11 @@
       "flatpak": "org.videolan.VLC",
       "id": "vlc",
       "name": "VLC"
+    },
+    {
+      "flatpak": "org.gnome.Chess",
+      "id": "org.gnome.Chess",
+      "name": "org.gnome.Chess"
     }
   ],
   "base": {

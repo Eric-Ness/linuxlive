@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -28,13 +29,20 @@ from linuxlive.catalog import load_catalog  # noqa: E402
 UA = {"User-Agent": "linuxlive-catalog-check/0.1"}
 
 
-def fetch(url: str) -> tuple[int, bytes]:
+def fetch(url: str, attempts: int = 5) -> tuple[int, bytes]:
+    """Status and body; a dropped connection or timeout is tried again, then reported as status 0."""
     request = urllib.request.Request(url, headers=UA)
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            return response.status, response.read()
-    except urllib.error.HTTPError as exc:
-        return exc.code, b""
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return response.status, response.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code < 500:
+                return exc.code, b""
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            pass
+        time.sleep(2 * (attempt + 1))
+    return 0, b""
 
 
 def flathub(app_id: str) -> str | None:

@@ -7,6 +7,9 @@ base: fedora
 desktop: kde
 apps:
   - firefox
+# Any app from Flathub, by its Flathub ID (checked with Flathub before the build).
+flathub:
+  - org.kde.kcalc
 branding:
   wallpaper: assets/wallpaper.png
   logo: assets/logo.png

@@ -7,7 +7,7 @@
 #       permissions:
 #         contents: read
 #         packages: write
-#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.5.0
+#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.6.0
 #       with:
 #         publish-image: true
 #
@@ -59,7 +59,7 @@ on:
         description: Pipeline version to build with (a tag, branch or commit)
         type: string
         # Changed with each release; tests/test_workflows.py checks it matches pyproject.toml.
-        default: v0.5.0
+        default: v0.6.0
 
 defaults:
   run:
@@ -104,7 +104,8 @@ jobs:
           LINUXLIVE_REPOSITORY: ${{ inputs.linuxlive-repository }}
           LINUXLIVE_REF: ${{ inputs.linuxlive-ref }}
         run: |
-          python -m linuxlive validate "$SPEC"
+          # --online: Flathub's API confirms the spec's flathub apps before anything is built.
+          python -m linuxlive validate --online "$SPEC"
           mkdir -p "$RESULTS"
           # Names come from the spec, so pass them on through files, never through the shell.
           python - <<'PY'
