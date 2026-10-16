@@ -563,6 +563,10 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		fi
 		# Units that failed later, such as ones started after login.
 		fact failed_units_after_settle "$(failed_units)"
+		# Why each failed: the last lines of its log.
+		for unit in $(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}'); do
+			journalctl -b -u "$unit" --no-pager -o cat 2>/dev/null | tail -n 6 | while IFS= read -r line; do fact failed_unit_log "$unit: $line"; done
+		done
 		# A first-login welcome wizard (upstream's, with upstream's artwork), if one runs.
 		wizards=$(pgrep -u "$user" -a -f 'initial-setup|desktop-provision|ubuntu-welcome|plasma-welcome|plasma-setup' 2>/dev/null |
 			awk '{print $2}' | xargs -r -n 1 basename | sort -u | tr '\n' ' ' | sed 's/ $//')

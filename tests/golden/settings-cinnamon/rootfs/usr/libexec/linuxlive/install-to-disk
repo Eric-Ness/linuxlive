@@ -148,19 +148,29 @@ log=$(mktemp)
 # systemd service in it) may not enter; with this it sets the live session
 # permissive while it installs instead. The installed system is still labelled
 # from the image's policy and runs enforcing.
-BOOTC_SETENFORCE0_FALLBACK=1 bootc install to-disk --wipe --filesystem xfs --skip-fetch-check \
-	--source-imgref "docker://$source" --target-imgref "$LL_IMAGE_REF" "$disk" >"$log" 2>&1 &
-job=$!
+# Up to three tries when reaching the registry times out (a slow or flaky
+# network; --wipe starts each try afresh). Any other failure stops at once.
 pct=4
-while kill -0 "$job" 2>/dev/null; do
-	sleep 5
-	[ "$pct" -ge 74 ] || pct=$((pct + 1))
-	progress "$pct" "Installing $LL_NAME: $(tail -n 1 "$log" | cut -c1-80)"
-done
-if ! wait "$job"; then
+for try in 1 2 3; do
+	BOOTC_SETENFORCE0_FALLBACK=1 bootc install to-disk --wipe --filesystem xfs --skip-fetch-check \
+		--source-imgref "docker://$source" --target-imgref "$LL_IMAGE_REF" "$disk" >"$log" 2>&1 &
+	job=$!
+	while kill -0 "$job" 2>/dev/null; do
+		sleep 5
+		[ "$pct" -ge 74 ] || pct=$((pct + 1))
+		progress "$pct" "Installing $LL_NAME: $(tail -n 1 "$log" | cut -c1-80)"
+	done
+	if wait "$job"; then
+		break
+	fi
+	if [ "$try" -lt 3 ] && grep -qiE 'pinging container registry|TLS handshake timeout|i/o timeout|request canceled while waiting for connection' "$log"; then
+		progress "$pct" "The download timed out; trying again"
+		sleep 10
+		continue
+	fi
 	tail -n 15 "$log"
 	die "installing the system failed: $(grep -iE 'error' "$log" | tail -n 1 | cut -c1-200)"
-fi
+done
 tail -n 5 "$log"
 
 progress 76 "Setting up the system"
