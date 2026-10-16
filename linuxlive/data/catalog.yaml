@@ -169,3 +169,8 @@ keyboards:
 kiosk:
   ubuntu: [cage, xwayland]
   fedora: [cage, xorg-x11-server-Xwayland]
+# Bases whose Cage is older than 0.3.0, which crashes when a Wayland app asks
+# for full screen before its window shows (Firefox's --kiosk does; Cage
+# 0.3.0 fixed it): Ubuntu 26.04 has 0.2.1. There the kiosk app runs through
+# Xwayland instead, which takes another path.
+kiosk_x11: [ubuntu]

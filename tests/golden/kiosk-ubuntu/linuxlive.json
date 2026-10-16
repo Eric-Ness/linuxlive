@@ -66,6 +66,8 @@
       "command": [
         "flatpak",
         "run",
+        "--nosocket=wayland",
+        "--socket=x11",
         "org.mozilla.firefox",
         "--kiosk"
       ],

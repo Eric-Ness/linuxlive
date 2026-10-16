@@ -50,6 +50,7 @@ class Plan:
     hostname: str = ""
     kiosk_app: App | None = None
     kiosk_packages: tuple[str, ...] = ()
+    kiosk_x11: bool = False
     # The CPU architecture, as Flatpak names it.
     flatpak_arch: str = "x86_64"
 
@@ -154,4 +155,5 @@ def plan_build(spec: Spec, catalog: Catalog) -> Plan:
         hostname=spec.settings.hostname or spec.id,
         kiosk_app=catalog.apps[spec.kiosk] if spec.kiosk else None,
         kiosk_packages=catalog.kiosk_packages.get(spec.base, ()) if spec.kiosk else (),
+        kiosk_x11=bool(spec.kiosk) and spec.base in catalog.kiosk_x11,
     )

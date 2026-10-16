@@ -26,6 +26,8 @@ StandardError=journal
 UtmpIdentifier=tty1
 UtmpMode=user
 Environment=XDG_SESSION_TYPE=wayland
+# Virtual machines and many PCs have no 3D driver; wlroots then refuses to start unless told to draw in software.
+Environment=WLR_RENDERER_ALLOW_SOFTWARE=1
 Environment=XKB_DEFAULT_LAYOUT=fr
 # + : as root; the kiosk user may not tell Plymouth to quit.
 ExecStartPre=-+/usr/bin/plymouth quit

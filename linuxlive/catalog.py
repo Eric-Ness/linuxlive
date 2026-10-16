@@ -81,6 +81,8 @@ class Catalog:
     keyboards: dict[str, str] = field(default_factory=dict)
     # Base -> the packages kiosk mode adds.
     kiosk_packages: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Bases whose kiosk app runs through Xwayland (their Cage is too old for Wayland apps going full screen).
+    kiosk_x11: tuple[str, ...] = ()
 
     def variant(self, desktop: str, base: str) -> DesktopVariant | None:
         return self.desktops[desktop].variants.get(base)
@@ -167,9 +169,11 @@ def parse_catalog(raw: dict) -> Catalog:
     if not isinstance(keyboards, dict) or not all(isinstance(k, str) and isinstance(v, str) and v for k, v in keyboards.items()):
         raise CatalogError("keyboards must map XKB layouts to labels")
     kiosk = {base_id: _strings(names, f"kiosk.{base_id}") for base_id, names in (raw.get("kiosk") or {}).items()}
+    kiosk_x11 = _strings(raw.get("kiosk_x11"), "kiosk_x11")
     if not bases or not desktops:
         raise CatalogError("catalog needs at least one base and one desktop")
-    return Catalog(bases=bases, desktops=desktops, apps=apps, languages=languages, keyboards=dict(keyboards), kiosk_packages=kiosk)
+    return Catalog(bases=bases, desktops=desktops, apps=apps, languages=languages, keyboards=dict(keyboards), kiosk_packages=kiosk,
+                   kiosk_x11=kiosk_x11)
 
 
 @lru_cache(maxsize=1)

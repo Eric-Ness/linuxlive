@@ -94,7 +94,10 @@ def firefox_policies_text(plan: Plan) -> str | None:
 
 def kiosk_command(plan: Plan) -> list[str]:
     app = plan.kiosk_app
-    return ["flatpak", "run", app.flatpak, *app.kiosk_args]
+    # Without the Wayland socket a Flatpak app talks X11, to Cage's Xwayland
+    # (catalog kiosk_x11: that base's Cage crashes on Wayland apps going full screen).
+    x11 = ["--nosocket=wayland", "--socket=x11"] if plan.kiosk_x11 else []
+    return ["flatpak", "run", *x11, app.flatpak, *app.kiosk_args]
 
 
 def add_options(ctx: BuildContext, plan: Plan) -> None:
@@ -154,6 +157,8 @@ StandardError=journal
 UtmpIdentifier=tty1
 UtmpMode=user
 Environment=XDG_SESSION_TYPE=wayland
+# Virtual machines and many PCs have no 3D driver; wlroots then refuses to start unless told to draw in software.
+Environment=WLR_RENDERER_ALLOW_SOFTWARE=1
 {f"Environment=XKB_DEFAULT_LAYOUT={plan.keyboard}" + chr(10) if plan.keyboard else ""}# + : as root; the kiosk user may not tell Plymouth to quit.
 ExecStartPre=-+/usr/bin/plymouth quit
 # -d: no window decorations; -s: the consoles stay reachable (Ctrl+Alt+F2).

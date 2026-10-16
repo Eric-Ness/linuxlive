@@ -189,11 +189,12 @@ def test_firefox_policies(workspace):
 def test_kiosk_mode(workspace, base):
     spec = load_spec(write_spec(workspace, spec_data(base=base, kiosk={"app": "firefox"}, settings={"keyboard": "de"})))
     ctx, plan = build_context(spec)
-    assert text(ctx, "rootfs/usr/libexec/linuxlive/kiosk-app").endswith("exec flatpak run org.mozilla.firefox --kiosk\n")
+    x11 = "--nosocket=wayland --socket=x11 " if base == "ubuntu" else ""  # Ubuntu's Cage 0.2.1: see catalog kiosk_x11
+    assert text(ctx, "rootfs/usr/libexec/linuxlive/kiosk-app").endswith(f"exec flatpak run {x11}org.mozilla.firefox --kiosk\n")
     assert ctx.files()["rootfs/usr/libexec/linuxlive/kiosk-app"][1] == 0o755
     unit = text(ctx, "rootfs/usr/lib/systemd/system/linuxlive-kiosk.service")
     for line in (f"User={KIOSK_USER}", "PAMName=login", "TTYPath=/dev/tty1", "ConditionKernelCommandLine=!linuxlive.install",
-                 "Environment=XDG_SESSION_TYPE=wayland", "Environment=XKB_DEFAULT_LAYOUT=de",
+                 "Environment=XDG_SESSION_TYPE=wayland", "Environment=XKB_DEFAULT_LAYOUT=de", "Environment=WLR_RENDERER_ALLOW_SOFTWARE=1",
                  "ExecStart=/usr/bin/cage -d -s -- /usr/libexec/linuxlive/kiosk-app", "WantedBy=graphical.target",
                  "ExecStartPre=-+/usr/bin/plymouth quit", "Conflicts=plymouth-quit.service"):
         assert line in unit.splitlines(), line
@@ -210,7 +211,7 @@ def test_kiosk_mode(workspace, base):
 
 
 def test_kiosk_apps_without_kiosk_args_run_plain(workspace):
-    ctx, _ = build_context(load_spec(write_spec(workspace, spec_data(apps=["gcompris"], kiosk={"app": "gcompris"}))))
+    ctx, _ = build_context(load_spec(write_spec(workspace, spec_data(base="fedora", desktop="kde", apps=["gcompris"], kiosk={"app": "gcompris"}))))
     assert text(ctx, "rootfs/usr/libexec/linuxlive/kiosk-app").endswith("exec flatpak run org.kde.gcompris\n")
 
 
