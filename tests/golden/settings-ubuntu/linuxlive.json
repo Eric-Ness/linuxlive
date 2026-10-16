@@ -28,6 +28,7 @@
     "file_name": "aula-linux-0.1-ubuntu-amd64.iso",
     "kernel_args": "boot=casper quiet splash ---",
     "layout": "casper",
+    "persistence": true,
     "volume_id": "AULA_LINUX_0_1"
   },
   "name": "Aula Linux",

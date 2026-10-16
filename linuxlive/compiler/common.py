@@ -179,6 +179,20 @@ def add_grub_configs(ctx: BuildContext, plan: Plan, kernel: str, initrd: str, in
     """
     title = f"{plan.spec.name} {plan.spec.version}"
     args = plan.kernel_args
+    # Persistence (Ubuntu): casper keeps the live system's changes in a
+    # partition labelled "writable" on the USB stick, which it makes itself in
+    # the free space after the ISO the first time. The first entry saves; the
+    # second starts clean (and leaves what was saved alone).
+    try_args, try_label, fresh_entry = args, f"Try {title}", ""
+    if plan.spec.persistence:
+        try_args = args.replace("boot=casper", "boot=casper persistent", 1)
+        try_label = f"Try {title}, saving your changes on the USB stick"
+        fresh_entry = f"""
+menuentry 'Try {title} without saving anything' --id try-fresh {{
+	linux {kernel} {args}
+	initrd {initrd}
+}}
+"""
     install_entry = f"""
 menuentry 'Install {title}' --id install {{
 	linux {kernel} linuxlive.install {args}
@@ -190,13 +204,13 @@ set default=0
 set timeout=5
 set timeout_style=menu
 
-menuentry 'Try {title}' --id try {{
-	linux {kernel} {args}
+menuentry '{try_label}' --id try {{
+	linux {kernel} {try_args}
 	initrd {initrd}
 }}
-{install_entry}
+{fresh_entry}{install_entry}
 menuentry 'Try {title} (safe graphics)' --id safe {{
-	linux {kernel} nomodeset {args}
+	linux {kernel} nomodeset {try_args}
 	initrd {initrd}
 }}
 

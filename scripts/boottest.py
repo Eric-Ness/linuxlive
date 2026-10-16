@@ -10,7 +10,9 @@ for `python -m linuxlive verify-results`.
 
     scripts/boottest.py --iso X.iso --mode uefi-usb --session --out results/modes/uefi-usb
 
-Modes: bios-cd, uefi-cd, uefi-sb-cd (Secure Boot), bios-usb, uefi-usb.
+Modes: bios-cd, uefi-cd, uefi-sb-cd (Secure Boot), bios-usb, uefi-usb; the
+installer's install, installed-uefi-sb and installed-bios; and persist-1 and
+persist-2, two boots of one writable stick image.
 Needs qemu-system-x86_64 and OVMF. Uses KVM when /dev/kvm is usable.
 """
 
@@ -43,6 +45,11 @@ MODES = {
     "install": ("uefi-sb", "usb+disk"),
     "installed-uefi-sb": ("uefi-sb", "disk"),
     "installed-bios": ("bios", "disk"),
+    # Persistence (Ubuntu): a USB stick with room after the ISO (--disk, a raw
+    # copy of the ISO made bigger), booted twice; the first boot makes the
+    # partition changes are saved to, the second must find them.
+    "persist-1": ("uefi", "usb-rw"),
+    "persist-2": ("uefi", "usb-rw"),
 }
 # What the unattended install (autoinstall, in the image) is told: the blank
 # disk is the VM's first virtio disk. No time zone: the install keeps the live
@@ -121,6 +128,14 @@ def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, m
         cmd += ["-fw_cfg", f"name=opt/linuxlive/autoinstall,string={settings}"]
     if media == "disk":
         return cmd
+    if media == "usb-rw":
+        if disk is None:
+            raise SystemExit(f"--mode {mode} needs --disk (a raw stick image)")
+        return cmd + [
+            "-drive", f"if=none,id=stick,format=raw,file={disk}",
+            "-device", "qemu-xhci,id=xhci",
+            "-device", "usb-storage,bus=xhci.0,drive=stick,bootindex=0",
+        ]
     if media == "cd":
         cmd += [
             "-drive", f"if=none,id=boot,media=cdrom,readonly=on,file={iso}",
@@ -360,7 +375,7 @@ def main() -> int:
     parser.add_argument("--screenshots", type=int, default=3)
     parser.add_argument("--screenshot-interval", type=int, default=30)
     parser.add_argument("--tcg-factor", type=int, default=5, help="multiply timeouts by this without KVM")
-    parser.add_argument("--disk", help="qcow2 disk for the install and installed-* modes")
+    parser.add_argument("--disk", help="qcow2 disk for the install and installed-* modes; a raw stick image for persist-*")
     parser.add_argument("--install-timeout", type=int, default=1800, help="seconds from the install's start to its end (KVM)")
     parser.add_argument("--autoinstall-image", help="registry image the unattended install installs from (Fedora)")
     parser.add_argument("--autoinstall-autologin", choices=("on", "spec"), default="on",

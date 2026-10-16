@@ -86,6 +86,7 @@ class Plan:
                 "file_name": self.iso_name,
                 "layout": self.live_layout,
                 "kernel_args": self.kernel_args,
+                "persistence": s.persistence,
             },
         }
 

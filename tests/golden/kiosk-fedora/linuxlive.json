@@ -28,6 +28,7 @@
     "file_name": "gioco-linux-0.1-fedora-amd64.iso",
     "kernel_args": "root=live:CDLABEL=GIOCO_LINUX_0_1 rd.live.image rd.live.overlay.overlayfs=1 quiet rhgb",
     "layout": "liveos",
+    "persistence": false,
     "volume_id": "GIOCO_LINUX_0_1"
   },
   "name": "Gioco Linux",

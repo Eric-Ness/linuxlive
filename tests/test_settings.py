@@ -262,7 +262,7 @@ def busy_png(path: Path) -> None:
     write_png(path, Image(w, h, bytes(data)))
 
 
-def example_results(root: Path, name: str) -> tuple[object, Path]:
+def example_results(root: Path, name: str, persistence: bool = True) -> tuple[object, Path]:
     """Good results for one of the settings examples, from the TestOS fixture."""
     spec = load_spec(EXAMPLES / f"{name}.yaml")
     from linuxlive.compiler.plan import plan_build
@@ -325,7 +325,22 @@ def example_results(root: Path, name: str) -> tuple[object, Path]:
         edit(result, change)
     if kiosk:
         busy_png(results / "modes" / SESSION_MODE / "screenshot-1.png")
+    if spec.persistence and persistence:
+        persist_results(results)
     return spec, results
+
+
+def persist_results(results: Path) -> None:
+    """Good persistence boots: the second sees the first's markers."""
+    live = json.loads((results / "modes" / "uefi-usb" / "result.json").read_text())
+    for mode, boot_id, seen in (("persist-1", "aaa-1", "none"), ("persist-2", "bbb-2", "aaa-1")):
+        data = json.loads(json.dumps(live))
+        data["mode"] = mode
+        data["facts"].update(cmdline=["BOOT_IMAGE=/casper/vmlinuz boot=casper persistent quiet splash ---"], boot_id=[boot_id],
+                             persistence_partition=["/dev/sda3"], persistence_seen=[seen], persistence_home_seen=[seen])
+        (results / "modes" / mode).mkdir(parents=True)
+        (results / "modes" / mode / "result.json").write_text(json.dumps(data))
+
 
 
 @pytest.mark.parametrize("name", SETTINGS_EXAMPLES)

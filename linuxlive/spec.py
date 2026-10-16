@@ -123,6 +123,8 @@ class Spec:
     settings: Settings = Settings()
     firefox: Firefox | None = None
     kiosk: str | None = None  # the app kiosk mode shows
+    # Save changes to the USB stick (casper's persistence; Ubuntu only).
+    persistence: bool = False
 
     @property
     def runs_own_code(self) -> bool:
@@ -214,6 +216,12 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
 
     settings, firefox, kiosk, option_problems = _resolve_options(raw, apps + flathub, catalog)
     problems += option_problems
+    persistence = bool(raw.get("persistence", False))
+    if persistence and base != "ubuntu":
+        problems.append(
+            "persistence: only Ubuntu-based distros can save changes to the USB stick so far "
+            "(Fedora's live boot keeps a saved layer only on a partition nothing makes on a written stick)"
+        )
 
     if problems:
         raise SpecError(path, problems)
@@ -239,6 +247,7 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
         settings=settings,
         firefox=firefox,
         kiosk=kiosk,
+        persistence=persistence,
     )
 
 

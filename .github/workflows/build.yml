@@ -7,7 +7,7 @@
 #       permissions:
 #         contents: read
 #         packages: write
-#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.6.0
+#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.7.0
 #       with:
 #         publish-image: true
 #
@@ -59,7 +59,7 @@ on:
         description: Pipeline version to build with (a tag, branch or commit)
         type: string
         # Changed with each release; tests/test_workflows.py checks it matches pyproject.toml.
-        default: v0.6.0
+        default: v0.7.0
 
 defaults:
   run:
@@ -217,6 +217,25 @@ jobs:
           else
             echo "::error::The first boot never reached userspace; skipped the other boot modes"
           fi
+
+      - name: Persistence test
+        run: |
+          # Only for specs with persistence (Ubuntu): a stick with room after the
+          # ISO, booted twice. casper makes the "writable" partition on the
+          # first boot; the second must find what the first saved.
+          if ! python -c 'import json, sys; sys.exit(0 if json.load(open("build/ctx/linuxlive.json"))["iso"].get("persistence") else 1)'; then
+            echo "No persistence in this spec; skipped" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! grep -q LINUXLIVE_SESSION_READY "$RESULTS/modes/uefi-usb/serial.log" 2>/dev/null; then
+            echo "::error::The live session never came up; skipped the persistence test"
+            exit 0
+          fi
+          cp --sparse=always "$ISO" build/stick.img
+          truncate -s 8G build/stick.img
+          python linuxlive/scripts/boottest.py --iso "$ISO" --mode persist-1 --disk build/stick.img --session --out "$RESULTS/modes/persist-1" || true
+          python linuxlive/scripts/boottest.py --iso "$ISO" --mode persist-2 --disk build/stick.img --session --out "$RESULTS/modes/persist-2" || true
+          rm -f build/stick.img
 
       - name: Install test
         run: |

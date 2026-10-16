@@ -33,6 +33,7 @@
     "file_name": "lawn-darts-linux-0.1-ubuntu-amd64.iso",
     "kernel_args": "boot=casper quiet splash ---",
     "layout": "casper",
+    "persistence": false,
     "volume_id": "LAWN_DARTS_LINUX_0_1"
   },
   "name": "Lawn Darts Linux",
