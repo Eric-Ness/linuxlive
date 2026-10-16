@@ -1,165 +1,32 @@
-# Builds every example spec into a live ISO and boots each one in QEMU.
-#
-# unit:   tests, shellcheck, and compiling every example
-# build:  per example, through the reusable workflow build.yml at this commit:
-#         compile -> podman build -> assemble ISO -> inspect ->
-#         boot in five firmware/media modes -> verify against the spec
-#
-# The results artifact (logs, screenshots, result.json files) is what the
-# local gates in GATES.md re-check. Run it by hand with keep_iso to also
-# download the ISOs; they are kept for one day.
-#
-# Monthly (the 3rd, 04:17 UTC) it also rebuilds and publishes the examples, so
-# their packages never fall more than a month behind Ubuntu's and Fedora's.
-#
-# publish: run by hand with publish ticked (or monthly), it copies the four
-#          published examples' ISOs (TestOS and Lawn Darts) to the R2
-#          bucket behind downloads.linuxlive.com once every build has passed,
-#          as <example>/<run id>/<example>.iso (the path the site links to),
-#          with its .sha256 and .packages (the package list) beside it.
+# Temporary probe (branch arm-probe only): what GitHub's arm64 runners offer
+# for building and boot-testing aarch64 ISOs. Not for main.
 name: spike
-
 on:
-  push:
-    branches: [main]
-    # Docs, working notes and the gate ledger change nothing that gets built or tested.
-    paths-ignore: [README.md, GATES.md, NOTES.md]
-  schedule:
-    - cron: "17 4 3 * *"
   workflow_dispatch:
     inputs:
-      keep_iso:
-        description: Upload the ISOs as artifacts (kept for one day)
-        type: boolean
-        default: false
-      publish:
-        description: After all four builds pass, upload the ISOs to downloads.linuxlive.com (R2)
-        type: boolean
-        default: false
-      only:
-        description: Build just this example (for debugging one; leave empty for all four)
-        type: string
-        default: ""
-
+      keep_iso: {type: boolean, default: false}
+      publish: {type: boolean, default: false}
+      only: {type: string, default: ""}
 permissions:
   contents: read
-
-# A push cancels an older push's run, never a hand-run or monthly publish.
-concurrency:
-  group: spike-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
-
-defaults:
-  run:
-    shell: bash
-
 jobs:
-  unit:
-    runs-on: ubuntu-24.04
+  probe:
+    runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements-dev.txt
-      - name: Tests
-        run: python -m pytest -q -p no:cacheprovider --junitxml=junit.xml
-      - name: Shellcheck
-        run: |
-          shellcheck --version
-          shellcheck --severity=warning \
-            scripts/assemble-iso.sh \
-            linuxlive/data/rootfs/common/usr/libexec/linuxlive/finalize \
-            linuxlive/data/rootfs/common/usr/libexec/linuxlive/bootcheck \
-            linuxlive/data/rootfs/common/usr/libexec/linuxlive/ini-set \
-            linuxlive/data/rootfs/common/usr/libexec/linuxlive/live-setup \
-            linuxlive/data/rootfs/kde/usr/libexec/linuxlive/kde-apply-branding \
-            linuxlive/data/rootfs/ubuntu/usr/libexec/linuxlive/install-to-disk \
-            linuxlive/data/rootfs/fedora/usr/libexec/linuxlive/install-to-disk \
-            linuxlive/data/rootfs/fedora/usr/libexec/linuxlive/firstboot \
-            linuxlive/data/rootfs/common/usr/libexec/linuxlive/autoinstall \
-            linuxlive/data/rootfs/common/usr/libexec/linuxlive/install-on-boot \
-            linuxlive/data/rootfs/common/usr/libexec/linuxlive/user-build \
-            linuxlive/data/rootfs/common/usr/libexec/linuxlive/first-boot-scripts \
-            linuxlive/data/rootfs/common/usr/libexec/linuxlive/first-login-scripts \
-            examples/assets/extras/*.sh
-      - name: Compile examples
-        run: |
-          compiled=()
-          for spec in examples/*.yaml; do
-            name=$(basename "$spec" .yaml)
-            python -m linuxlive compile "$spec" -o "build/ctx-$name"
-            bash -n "build/ctx-$name/iso.env"
-            compiled+=("$name")
-          done
-          echo "COMPILED=${compiled[*]}" >> "$GITHUB_ENV"
-      - name: Summary
-        run: |
-          # shellcheck disable=SC2086 # COMPILED is a space-separated list of names
-          python scripts/ci_unit_summary.py --junit junit.xml --commit "$GITHUB_SHA" \
-            --shellcheck ok --compiled $COMPILED --out unit-summary.json
-      - uses: actions/upload-artifact@v7
-        with:
-          name: unit-summary
-          path: unit-summary.json
-
-  build:
-    name: build (${{ matrix.example }})
-    needs: unit
-    # The Fedora examples publish their bootc image (installable ISOs).
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        # Each name is a spec in examples/; a hand-run with "only" builds just that one.
-        # The settings and kiosk examples are built and checked, never published.
-        example: ${{ fromJSON(inputs.only && format('["{0}"]', inputs.only) || '["testos-ubuntu", "testos-fedora", "lawndarts-ubuntu", "lawndarts-fedora", "settings-ubuntu", "settings-fedora", "settings-cinnamon", "kiosk-ubuntu", "kiosk-fedora"]') }}
-    uses: ./.github/workflows/build.yml
-    with:
-      spec: examples/${{ matrix.example }}.yaml
-      name: ${{ matrix.example }}
-      keep-iso: ${{ inputs.keep_iso == true || inputs.publish == true || github.event_name == 'schedule' }}
-      publish-image: true
-      iso-retention-days: 1
-      # Build with the pipeline at this commit, not the release build.yml defaults to.
-      linuxlive-repository: ${{ github.repository }}
-      linuxlive-ref: ${{ github.sha }}
-
-  publish:
-    name: publish (${{ matrix.example }})
-    # needs: build waits for every example, so either all four ISOs go up or none.
-    needs: build
-    if: inputs.publish == true || github.event_name == 'schedule'
-    runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        example: [testos-ubuntu, testos-fedora, lawndarts-ubuntu, lawndarts-fedora]
-    env:
-      EXAMPLE: ${{ matrix.example }}
-      BUCKET: ${{ vars.R2_BUCKET || 'linuxlive-downloads' }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION: auto
-      R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-      # Newer AWS CLIs add checksum headers R2 can reject; send them only when an API requires them.
-      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
-      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
-    steps:
-      - uses: actions/download-artifact@v7
-        with:
-          name: iso-${{ matrix.example }}
-          path: iso
-      - name: Check the ISO against its SHA-256
-        working-directory: iso
-        run: sha256sum -c "$EXAMPLE.iso.sha256"
-      - name: Upload to R2
-        working-directory: iso
-        run: |
-          key="$EXAMPLE/$GITHUB_RUN_ID"
-          # The run id makes every path new, so browsers and Cloudflare may cache it forever.
-          aws s3 cp "$EXAMPLE.iso" "s3://$BUCKET/$key/$EXAMPLE.iso" --endpoint-url "$R2_ENDPOINT"             --content-type application/x-iso9660-image --cache-control "public, max-age=31536000, immutable" --no-progress
-          aws s3 cp "$EXAMPLE.iso.sha256" "s3://$BUCKET/$key/$EXAMPLE.iso.sha256" --endpoint-url "$R2_ENDPOINT"             --content-type text/plain --cache-control "public, max-age=31536000, immutable" --no-progress
-          aws s3 cp "$EXAMPLE.iso.packages" "s3://$BUCKET/$key/$EXAMPLE.iso.packages" --endpoint-url "$R2_ENDPOINT"             --content-type "text/plain; charset=utf-8" --cache-control "public, max-age=31536000, immutable" --no-progress
-          echo "https://downloads.linuxlive.com/$key/$EXAMPLE.iso" >> "$GITHUB_STEP_SUMMARY"
+      - run: |
+          uname -a; nproc; free -g; df -h /
+          ls -l /dev/kvm || echo "NO KVM"
+          grep -c . /proc/cpuinfo; head -20 /proc/cpuinfo
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-arm qemu-efi-aarch64 ovmf qemu-utils >/dev/null
+          ls -l /usr/share/AAVMF/ /usr/share/qemu-efi-aarch64/ 2>/dev/null
+          qemu-system-aarch64 --version
+          podman --version
+          podman pull --arch arm64 quay.io/fedora/fedora-silverblue:44 >/dev/null && echo "silverblue arm64 ok"
+          podman pull quay.io/fedora-ostree-desktops/base-atomic:44 >/dev/null && echo "base-atomic arm64 ok"
+          podman run --rm docker.io/library/ubuntu:26.04 sh -c 'apt-get update -qq && apt-cache policy shim-signed grub-efi-arm64-signed linux-image-generic | grep -E "^[a-z]|Candidate"'
+          # How fast is TCG here? Boot the AAVMF firmware to its shell for 60 s.
+          if [ -e /dev/kvm ]; then accel="-accel kvm -cpu host"; else accel="-accel tcg,thread=multi -cpu max"; fi
+          cp /usr/share/AAVMF/AAVMF_VARS.fd vars.fd
+          timeout 60 qemu-system-aarch64 -machine virt $accel -m 2048 -smp 4 -nographic \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/AAVMF/AAVMF_CODE.fd -drive if=pflash,format=raw,file=vars.fd | tail -5 || true
