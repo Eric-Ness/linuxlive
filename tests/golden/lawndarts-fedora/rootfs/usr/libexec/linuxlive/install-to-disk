@@ -96,7 +96,7 @@ if [ "${1:-}" = --list-disks ]; then
 	exit 0
 fi
 
-disk="" user="" fullname="" password_file="" hostname="" timezone=UTC autologin=${LL_AUTOLOGIN_DEFAULT:-0} confirm="" image=""
+disk="" user="" fullname="" password_file="" hostname="" timezone=$(readlink -f /etc/localtime 2>/dev/null | sed -n "s|.*/zoneinfo/||p") autologin=${LL_AUTOLOGIN_DEFAULT:-0} confirm="" image=""
 while [ $# -gt 0 ]; do
 	case $1 in
 	--disk) disk=$2; shift 2 ;;
@@ -120,6 +120,7 @@ done
 printf '%s' "$user" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$' || die "the user name must be lowercase letters, digits, - and _ (up to 32)"
 case $user in root | live | liveuser | daemon | bin | sys | nobody) die "the user name $user is taken by the system" ;; esac
 printf '%s' "$hostname" | grep -Eq '^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$' || die "the computer name must be letters, digits and dashes"
+[ -n "$timezone" ] || timezone=UTC
 [ -f "/usr/share/zoneinfo/$timezone" ] || die "unknown time zone $timezone"
 [ -s "$password_file" ] || die "no password given"
 case $fullname in *:* | *$'\n'* | *\'*) die "the name may not contain : ' or a line break" ;; esac

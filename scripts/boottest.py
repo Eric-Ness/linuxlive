@@ -45,9 +45,10 @@ MODES = {
     "installed-bios": ("bios", "disk"),
 }
 # What the unattended install (autoinstall, in the image) is told: the blank
-# disk is the VM's first virtio disk. Separated by ";" because QEMU's -fw_cfg
+# disk is the VM's first virtio disk. No time zone: the install keeps the live
+# system's, which is the spec's settings.timezone when it has one. Separated by ";" because QEMU's -fw_cfg
 # string may not contain commas.
-AUTOINSTALL = "disk=/dev/vda;user=tester;password=linuxlive-test;hostname=linuxlive-test;timezone=UTC"
+AUTOINSTALL = "disk=/dev/vda;user=tester;password=linuxlive-test;hostname=linuxlive-test"
 OVMF = {
     "uefi": (
         ["/usr/share/OVMF/OVMF_CODE_4M.fd", "/usr/share/OVMF/OVMF_CODE.fd", "/usr/share/edk2/ovmf/OVMF_CODE.fd"],

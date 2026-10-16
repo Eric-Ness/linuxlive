@@ -194,8 +194,11 @@ def test_kiosk_mode(workspace, base):
     unit = text(ctx, "rootfs/usr/lib/systemd/system/linuxlive-kiosk.service")
     for line in (f"User={KIOSK_USER}", "PAMName=login", "TTYPath=/dev/tty1", "ConditionKernelCommandLine=!linuxlive.install",
                  "Environment=XDG_SESSION_TYPE=wayland", "Environment=XKB_DEFAULT_LAYOUT=de",
-                 "ExecStart=/usr/bin/cage -d -s -- /usr/libexec/linuxlive/kiosk-app", "WantedBy=graphical.target"):
+                 "ExecStart=/usr/bin/cage -d -s -- /usr/libexec/linuxlive/kiosk-app", "WantedBy=graphical.target",
+                 "ExecStartPre=-/usr/bin/plymouth quit", "Conflicts=plymouth-quit.service"):
         assert line in unit.splitlines(), line
+    # Never after plymouth-quit-wait: with the login screen skipped, nothing would end it.
+    assert not [line for line in unit.splitlines() if "plymouth-quit-wait" in line and not line.startswith("#")]
     for dm in ("gdm", "sddm", "plasmalogin", "lightdm"):
         assert "ConditionKernelCommandLine=linuxlive.install" in text(ctx, f"rootfs/usr/lib/systemd/system/{dm}.service.d/linuxlive-kiosk.conf")
     assert f"u {KIOSK_USER} - " in text(ctx, "rootfs/usr/lib/sysusers.d/linuxlive-kiosk.conf")

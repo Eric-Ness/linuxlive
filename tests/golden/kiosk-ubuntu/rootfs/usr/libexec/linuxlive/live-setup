@@ -55,6 +55,16 @@ if [ -e /usr/libexec/plasma-welcome ] || command -v plasma-welcome >/dev/null 2>
 	done
 fi
 
+# The computer's name (settings.hostname, or the id). Fedora's livesys names
+# every live system localhost-live.
+# shellcheck disable=SC2154 # LL_* settings come from /usr/lib/linuxlive/branding.env
+name=$(. /usr/lib/linuxlive/branding.env && printf '%s' "${LL_HOSTNAME:-$LL_ID}")
+if [ -n "$name" ] && [ "$(cat /proc/sys/kernel/hostname)" != "$name" ]; then
+	printf '%s\n' "$name" >/etc/hostname
+	printf '%s' "$name" >/proc/sys/kernel/hostname
+	log "computer name: $name"
+fi
+
 # The installer's window runs install-to-disk as root through sudo -n, with
 # no password to ask for. Ubuntu's live user may use sudo freely; Fedora's
 # (from livesys) need not, and then the window finds no disks. So the live

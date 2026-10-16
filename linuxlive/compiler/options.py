@@ -131,10 +131,15 @@ Description=Kiosk: {app.name} full screen
 Documentation=https://github.com/Eric-Ness/linuxlive
 # The installer's boot entry starts the desktop instead, so the installer can run.
 ConditionKernelCommandLine=!linuxlive.install
-After=systemd-user-sessions.service plymouth-quit-wait.service systemd-logind.service dbus.socket
+After=systemd-user-sessions.service plymouth-start.service systemd-logind.service dbus.socket
 Wants=dbus.socket systemd-logind.service
 Conflicts=getty@tty1.service
 After=getty@tty1.service
+# Like a display manager, it takes the screen over from the boot splash. The
+# login screens' units stay in the boot (only their condition skips them) and
+# GDM's cancels plymouth-quit, so waiting for plymouth-quit-wait would hang.
+Conflicts=plymouth-quit.service
+After=plymouth-quit.service
 
 [Service]
 User={KIOSK_USER}
@@ -149,7 +154,8 @@ StandardError=journal
 UtmpIdentifier=tty1
 UtmpMode=user
 Environment=XDG_SESSION_TYPE=wayland
-{f"Environment=XKB_DEFAULT_LAYOUT={plan.keyboard}" + chr(10) if plan.keyboard else ""}# -d: no window decorations; -s: the consoles stay reachable (Ctrl+Alt+F2).
+{f"Environment=XKB_DEFAULT_LAYOUT={plan.keyboard}" + chr(10) if plan.keyboard else ""}ExecStartPre=-/usr/bin/plymouth quit
+# -d: no window decorations; -s: the consoles stay reachable (Ctrl+Alt+F2).
 ExecStart=/usr/bin/cage -d -s -- /usr/libexec/linuxlive/kiosk-app
 Restart=always
 RestartSec=2

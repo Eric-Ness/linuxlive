@@ -166,8 +166,12 @@ done
 # Who an installed system logs in automatically, from its login screen's settings.
 autologin=$(
 	{
-		awk -F= '/^\[daemon\]/ { d = 1; next } /^\[/ { d = 0 } d && $1 == "AutomaticLoginEnable" { e = tolower($2) } d && $1 == "AutomaticLogin" { u = $2 }
-			END { if (e == "true" && u != "") print u }' /etc/gdm3/custom.conf /etc/gdm/custom.conf 2>/dev/null
+		# Only files that exist: mawk (Ubuntu's awk) stops at one it cannot open.
+		for conf in /etc/gdm3/custom.conf /etc/gdm/custom.conf; do
+			[ -f "$conf" ] || continue
+			awk -F= '/^\[daemon\]/ { d = 1; next } /^\[/ { d = 0 } d && $1 == "AutomaticLoginEnable" { e = tolower($2) } d && $1 == "AutomaticLogin" { u = $2 }
+				END { if (e == "true" && u != "") print u }' "$conf"
+		done
 		cat /etc/sddm.conf.d/*.conf /etc/plasmalogin.conf.d/*.conf 2>/dev/null | sed -n 's/^User=//p'
 		cat /etc/lightdm/lightdm.conf.d/*.conf 2>/dev/null | sed -n 's/^autologin-user=//p'
 	} | sed '/^$/d' | sort -u | tr '\n' ' ' | sed 's/ $//'
@@ -427,7 +431,19 @@ PY
 
 # Wait for an active graphical user session with its desktop shell running.
 deadline=$(($(date +%s) + 2700))
+waited=$(($(date +%s) + 240))
 while [ "$(date +%s)" -lt "$deadline" ]; do
+	if [ -n "$waited" ] && [ "$(date +%s)" -ge "$waited" ]; then
+		# No desktop after four minutes: what the boot is still waiting for.
+		waited=""
+		fact waiting_failed_units "$(failed_units)"
+		systemctl list-jobs --no-legend --plain 2>/dev/null | head -n 15 | while IFS= read -r line; do fact waiting_job "$line"; done
+		for unit in display-manager.service linuxlive-kiosk.service; do
+			systemctl cat "$unit" >/dev/null 2>&1 || continue
+			fact waiting_unit "$unit $(systemctl show -p ActiveState,SubState,Result --value "$unit" 2>/dev/null | tr '\n' ' ')"
+			journalctl -b -u "$unit" --no-pager -o cat 2>/dev/null | tail -n 10 | while IFS= read -r line; do fact waiting_log "$unit: $line"; done
+		done
+	fi
 	for session in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}'); do
 		class=$(loginctl show-session "$session" -p Class --value 2>/dev/null)
 		state=$(loginctl show-session "$session" -p State --value 2>/dev/null)
