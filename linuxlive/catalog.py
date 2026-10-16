@@ -64,6 +64,8 @@ class App:
     flatpak: str
     # Arguments after the app in kiosk mode (Firefox's --kiosk).
     kiosk_args: tuple[str, ...] = ()
+    # The CPUs Flathub builds it for.
+    arches: tuple[str, ...] = ("amd64", "arm64")
 
 
 @dataclass(frozen=True)
@@ -164,7 +166,8 @@ def parse_catalog(raw: dict) -> Catalog:
     for key, a in (raw.get("apps") or {}).items():
         where = f"apps.{key}"
         apps[key] = App(id=key, name=_require(a, "name", where), flatpak=_require(a, "flatpak", where),
-                        kiosk_args=_strings(a.get("kiosk_args"), f"{where}.kiosk_args"))
+                        kiosk_args=_strings(a.get("kiosk_args"), f"{where}.kiosk_args"),
+                        arches=_strings(a.get("arches"), f"{where}.arches") or ("amd64", "arm64"))
     languages = {}
     for key, lang in (raw.get("languages") or {}).items():
         where = f"languages.{key}"
