@@ -280,6 +280,15 @@ def _check_settings(c: _Collector, plan: Plan, result: dict, where: str, *, live
                 c.expect(any(_same_url(u, b.url) for u in marks), f"{where}Firefox has the bookmark {b.name} ({b.url}; found {marks})")
 
 
+def _check_flatpak_runs(c: _Collector, plan: Plan, result: dict, where: str) -> None:
+    """A Flatpak app starts as the session's user (its sandbox works). Kiosk
+    mode checks its own app instead."""
+    if not plan.apps or plan.kiosk_app is not None:
+        return
+    runs = _fact(result, "flatpak_runs") or ""
+    c.expect(runs.endswith("=ok"), f"{where}a Flatpak app starts in the session ({runs!r})")
+
+
 def _check_not_blank(c: _Collector, mode_dir: Path, result: dict) -> None:
     best = None
     measured = []
@@ -368,6 +377,7 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
         c.expect(app.flatpak in installed, f"Flatpak {app.flatpak} ({app.name}) is installed")
     _check_extras(c, plan, result, "", installed=False)
     _check_settings(c, plan, result, "", live=True)
+    _check_flatpak_runs(c, plan, result, "")
     if plan.base.id == "fedora":
         c.expect(_fact(result, "selinux") == "Enforcing", f"SELinux is {_fact(result, 'selinux')!r}, expected 'Enforcing'")
     _check_upstream_branding(c, plan, result)
@@ -454,6 +464,7 @@ def check_install(plan: Plan, results: Path) -> list[Outcome]:
         c.expect(sorted(_facts(uefi, "flatpak")) == apps, f"installed-uefi-sb: the live session's apps are installed ({sorted(_facts(uefi, 'flatpak'))} vs {apps})")
         _check_extras(c, plan, uefi, "installed-uefi-sb: ", installed=True)
         _check_settings(c, plan, uefi, "installed-uefi-sb: ", live=False)
+        _check_flatpak_runs(c, plan, uefi, "installed-uefi-sb: ")
     bios = _load(modes / "installed-bios" / "result.json")
     if bios is None:
         c.expect(False, "installed-bios: result.json is missing or not valid JSON")

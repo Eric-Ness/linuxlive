@@ -78,6 +78,7 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         facts["installer_icon"] = ["desktop"]
         facts["installer_disks"] = ["1"]
         facts["first_login_wizard"] = ["none"]
+        facts["flatpak_runs"] = ["org.mozilla.firefox=ok"]
         if base == "ubuntu":
             facts["casper_md5check"] = ["pass"]
         if base == "fedora":  # TestOS on Fedora is KDE
@@ -253,6 +254,11 @@ BREAKS = {
         "initramfs carries the linuxlive text splash and not Ubuntu's",
     ),
     "app missing": (*_set_fact(SESSION_MODE, "flatpak", ["org.mozilla.firefox"]), "Flatpak org.videolan.VLC (VLC) is installed"),
+    "apps cannot start in the live session": (
+        *_set_fact(SESSION_MODE, "flatpak_runs", ["org.mozilla.firefox=failed: bwrap: Creating new namespace failed: Permission denied error: ldconfig failed, exit status 256"]),
+        "a Flatpak app starts in the session ('org.mozilla.firefox=failed: bwrap",
+    ),
+    "apps cannot start on the installed disk": (*_set_fact("installed-uefi-sb", "flatpak_runs", []), "installed-uefi-sb: a Flatpak app starts in the session (''"),
     "shell crashed after starting": (
         f"modes/{SESSION_MODE}/result.json",
         lambda d: d["facts"].update(shell_after_settle=["none"], session_error=["cinnamon[812]: segfault at 0 ip 00007f"]),

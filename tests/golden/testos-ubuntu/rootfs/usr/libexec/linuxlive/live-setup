@@ -55,6 +55,16 @@ if [ -e /usr/libexec/plasma-welcome ] || command -v plasma-welcome >/dev/null 2>
 	done
 fi
 
+# Ubuntu limits unprivileged user namespaces through AppArmor, and in casper's
+# live session (an overlay root) that stops Flatpak's sandbox: bubblewrap
+# cannot make its namespace, so no Flatpak app starts ("ldconfig failed").
+# The live system is thrown away at shutdown; installed systems keep the limit.
+userns=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+if [ -w "$userns" ] && [ "$(cat "$userns")" = 1 ]; then
+	printf '0\n' >"$userns"
+	log "Flatpak apps may make their sandbox (apparmor_restrict_unprivileged_userns=0, live session only)"
+fi
+
 # The computer's name (settings.hostname, or the id). Fedora's livesys names
 # every live system localhost-live.
 # shellcheck disable=SC2154 # LL_* settings come from /usr/lib/linuxlive/branding.env

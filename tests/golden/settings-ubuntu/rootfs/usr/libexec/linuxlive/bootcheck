@@ -567,6 +567,18 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 				done
 			fi
 		fi
+		# One of the Flatpak apps starts, as the session's user: its sandbox works
+		# (kiosk mode already shows its app running).
+		app=$(flatpak list --system --app --columns=application 2>/dev/null | head -n 1)
+		if [ -n "$app" ] && [ -z "$kiosk_app" ]; then
+			uid=$(id -u "$user")
+			if out=$(runuser -u "$user" -- env HOME="$(getent passwd "$user" | cut -d: -f6)" XDG_RUNTIME_DIR="/run/user/$uid" \
+				timeout 120 flatpak run --command=true "$app" 2>&1); then
+				fact flatpak_runs "$app=ok"
+			else
+				fact flatpak_runs "$app=failed: $(printf '%s' "$out" | tail -n 3 | tr '\n' ' ')"
+			fi
+		fi
 		fact update_notifiers "$(update_notifiers "$user")"
 		fact gnome_software_updates "$(gnome_software_updates "$user" "$pid")"
 		if [ "$shell" = plasmashell ]; then
