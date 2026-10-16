@@ -368,7 +368,8 @@ def run(args) -> int:
             for marker in log.markers:
                 result["timings"].setdefault(marker, round(now - started, 1))
             if "LINUXLIVE_BOOTCHECK_START" in log.markers and deadline == started + boot_timeout:
-                deadline = now + session_timeout if args.session else now + 300
+                # Five minutes from the boot check to its first report, longer when emulated.
+                deadline = now + session_timeout if args.session else now + 300 * scale
             if "LINUXLIVE_INSTALL_START" in log.markers and not install_deadline:
                 deadline = now + args.install_timeout * scale
                 install_deadline = True

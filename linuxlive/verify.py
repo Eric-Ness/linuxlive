@@ -196,7 +196,8 @@ def _check_live_session(c: _Collector, plan: Plan, result: dict) -> None:
     for key in ("failed_units", "failed_units_after_settle"):
         units = _fact(result, key)
         units = units.strip() if units is not None else None
-        c.expect(units in ("none", ""), f"no failed systemd units ({key}: {units!r})")
+        logs = _facts(result, "failed_unit_log")
+        c.expect(units in ("none", ""), f"no failed systemd units ({key}: {units!r})" + (f"; logs: {' | '.join(logs)}" if logs and units not in ("none", "") else ""))
     notifiers = _fact(result, "update_notifiers")
     c.expect(notifiers == "none", f"update notifiers in the live session: {notifiers!r}, expected 'none'")
     software = _fact(result, "gnome_software_updates")
