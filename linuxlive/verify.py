@@ -288,12 +288,14 @@ def _check_settings(c: _Collector, plan: Plan, result: dict, where: str, *, live
 
 
 def _check_flatpak_runs(c: _Collector, plan: Plan, result: dict, where: str) -> None:
-    """A Flatpak app starts as the session's user (its sandbox works). Kiosk
-    mode checks its own app instead."""
+    """Every Flatpak app starts as the session's user (its sandbox works).
+    Kiosk mode checks its own app instead."""
     if not plan.apps or plan.kiosk_app is not None:
         return
-    runs = _fact(result, "flatpak_runs") or ""
-    c.expect(runs.endswith("=ok"), f"{where}a Flatpak app starts in the session ({runs!r})")
+    runs = dict(r.split("=", 1) for r in _facts(result, "flatpak_runs") if "=" in r)
+    for app in plan.apps:
+        got = runs.get(app.flatpak)
+        c.expect(got == "ok", f"{where}Flatpak {app.flatpak} ({app.name}) starts in the session ({got!r})")
 
 
 def _check_not_blank(c: _Collector, mode_dir: Path, result: dict) -> None:
@@ -341,6 +343,11 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
         c.expect(_fact(result, "session_user") == KIOSK_USER, f"kiosk mode runs as {KIOSK_USER} (session user {_fact(result, 'session_user')!r})")
     else:
         c.expect(_fact(result, "installer_icon") == "desktop", f"the live desktop shows the installer (installer_icon {_fact(result, 'installer_icon')!r})")
+        if plan.base.id == "ubuntu" and plan.desktop.id == "gnome":
+            # Ubuntu's desktop icons (DING) start a launcher only when it is
+            # trusted and executable; otherwise a double-click says "untrusted".
+            launcher = _fact(result, "installer_launcher") or ""
+            c.expect(launcher.startswith("trusted=true mode=7"), f"a double-click on the installer's desktop launcher starts it (installer_launcher {launcher!r})")
         # The installer's window lists disks as the live user, through sudo -n; the
         # boot medium itself is always among them.
         listed = _fact(result, "installer_disks") or ""

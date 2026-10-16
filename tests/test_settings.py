@@ -297,7 +297,7 @@ def example_results(root: Path, name: str, persistence: bool = True) -> tuple[ob
                 f.pop(key, None)
             if d.get("outcome") != "session":
                 return
-            f.update(shell=[shell], shell_after_settle=[shell], shell_watch=[shell])
+            f.update(shell=[shell], shell_after_settle=[shell], shell_watch=[shell], flatpak_runs=[f"{a.flatpak}=ok" for a in plan.apps])
             if spec.desktop == "kde" and not kiosk:
                 f.update(kde_launcher_icon=["linuxlive-logo"], plasma_welcome_installer=["none"])
             if s.language:

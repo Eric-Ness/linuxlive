@@ -1,5 +1,16 @@
 #!/bin/sh
-# Opens the installer at login when the live system was started from the
+# At login in the live session: marks the installer's desktop launcher
+# trusted, and opens the installer when the live system was started from the
 # boot menu's "Install" entry (kernel parameter linuxlive.install).
+
+# GNOME's desktop icons (DING) start a .desktop file only when it is
+# executable and marked trusted. Until then they show it with a red cross and
+# its file name, and a double-click only says it is untrusted. touch makes
+# them look at it again if they drew it first.
+launcher=$HOME/Desktop/linuxlive-install.desktop
+if [ -f "$launcher" ] && command -v gio >/dev/null 2>&1; then
+	gio set "$launcher" metadata::trusted true 2>/dev/null && touch "$launcher"
+fi
+
 grep -qw linuxlive.install /proc/cmdline || exit 0
 exec /usr/libexec/linuxlive/installer

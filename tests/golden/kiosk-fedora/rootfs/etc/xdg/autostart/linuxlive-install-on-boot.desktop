@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=linuxlive installer (from the boot menu)
+Name=linuxlive installer (its desktop launcher, and the boot menu's Install)
 Exec=/usr/libexec/linuxlive/install-on-boot
 NoDisplay=true
 X-GNOME-Autostart-enabled=true
