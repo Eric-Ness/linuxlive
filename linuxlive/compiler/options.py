@@ -154,7 +154,8 @@ StandardError=journal
 UtmpIdentifier=tty1
 UtmpMode=user
 Environment=XDG_SESSION_TYPE=wayland
-{f"Environment=XKB_DEFAULT_LAYOUT={plan.keyboard}" + chr(10) if plan.keyboard else ""}ExecStartPre=-/usr/bin/plymouth quit
+{f"Environment=XKB_DEFAULT_LAYOUT={plan.keyboard}" + chr(10) if plan.keyboard else ""}# + : as root; the kiosk user may not tell Plymouth to quit.
+ExecStartPre=-+/usr/bin/plymouth quit
 # -d: no window decorations; -s: the consoles stay reachable (Ctrl+Alt+F2).
 ExecStart=/usr/bin/cage -d -s -- /usr/libexec/linuxlive/kiosk-app
 Restart=always

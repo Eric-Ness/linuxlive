@@ -27,7 +27,8 @@ UtmpIdentifier=tty1
 UtmpMode=user
 Environment=XDG_SESSION_TYPE=wayland
 Environment=XKB_DEFAULT_LAYOUT=fr
-ExecStartPre=-/usr/bin/plymouth quit
+# + : as root; the kiosk user may not tell Plymouth to quit.
+ExecStartPre=-+/usr/bin/plymouth quit
 # -d: no window decorations; -s: the consoles stay reachable (Ctrl+Alt+F2).
 ExecStart=/usr/bin/cage -d -s -- /usr/libexec/linuxlive/kiosk-app
 Restart=always

@@ -441,7 +441,10 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		for unit in display-manager.service linuxlive-kiosk.service; do
 			systemctl cat "$unit" >/dev/null 2>&1 || continue
 			fact waiting_unit "$unit $(systemctl show -p ActiveState,SubState,Result --value "$unit" 2>/dev/null | tr '\n' ' ')"
-			journalctl -b -u "$unit" --no-pager -o cat 2>/dev/null | tail -n 10 | while IFS= read -r line; do fact waiting_log "$unit: $line"; done
+			# The program's own lines, without systemd's start and restart notes.
+			journalctl -b -u "$unit" --no-pager -o cat 2>/dev/null |
+				grep -vE '^(Starting|Started|Stopped|Stopping) |Scheduled restart job|Failed with result|Main process exited|Deactivated successfully|pam_unix\(' |
+				tail -n 15 | while IFS= read -r line; do fact waiting_log "$unit: $line"; done
 		done
 	fi
 	for session in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}'); do
