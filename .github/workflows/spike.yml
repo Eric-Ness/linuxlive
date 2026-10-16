@@ -114,8 +114,8 @@ jobs:
       fail-fast: false
       matrix:
         # Each name is a spec in examples/; a hand-run with "only" builds just that one.
-        # The settings and kiosk examples are built and checked, never published.
-        example: ${{ fromJSON(inputs.only && format('["{0}"]', inputs.only) || '["testos-ubuntu", "testos-fedora", "lawndarts-ubuntu", "lawndarts-fedora", "settings-ubuntu", "settings-fedora", "settings-cinnamon", "kiosk-ubuntu", "kiosk-fedora"]') }}
+        # The settings, kiosk and ARM64 (macvm) examples are built and checked, never published.
+        example: ${{ fromJSON(inputs.only && format('["{0}"]', inputs.only) || '["testos-ubuntu", "testos-fedora", "lawndarts-ubuntu", "lawndarts-fedora", "settings-ubuntu", "settings-fedora", "settings-cinnamon", "kiosk-ubuntu", "kiosk-fedora", "macvm-ubuntu", "macvm-fedora"]') }}
     uses: ./.github/workflows/build.yml
     with:
       spec: examples/${{ matrix.example }}.yaml

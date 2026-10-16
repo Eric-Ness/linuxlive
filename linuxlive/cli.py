@@ -9,6 +9,7 @@ from pathlib import Path
 
 from linuxlive import __version__
 from linuxlive.compiler import CompileError, compile_spec
+from linuxlive.compiler.plan import ARCHES
 from linuxlive.flathub import FlathubError, check_apps
 from linuxlive.isoinspect import IsoError, inspect_iso
 from linuxlive.spec import SpecError, load_spec
@@ -18,7 +19,12 @@ from linuxlive.verify import CHECKS, verify_results
 def _validate(args) -> int:
     spec = load_spec(args.spec)
     if args.online and spec.flathub:
-        problems, found = check_apps(spec.flathub)
+        # Every app must be built for every CPU the spec asks for.
+        problems, found = [], []
+        for arch in spec.arches:
+            more, seen = check_apps(spec.flathub, ARCHES[arch].machine)
+            problems += [p for p in more if p not in problems]
+            found += [a for a in seen if a not in found]
         for app in found:
             print(f"  flathub: {app.id} ({app.name}){' verified' if app.verified else ''}, {', '.join(app.arches)}")
             if app.eol:
@@ -32,10 +38,10 @@ def _validate(args) -> int:
 
 def _compile(args) -> int:
     spec = load_spec(args.spec)
-    plan = compile_spec(spec, Path(args.output))
+    plan = compile_spec(spec, Path(args.output), arch=args.arch)
     print(f"wrote build context for {spec.name} {spec.version} to {args.output}")
     print(f"  base image: {plan.base_image}")
-    print(f"  ISO: {plan.iso_name} (volume {plan.volid})")
+    print(f"  ISO: {plan.iso_name} (volume {plan.volid}, {plan.arch.name})")
     return 0
 
 
@@ -77,6 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("compile", help="write a container build context for a spec")
     p.add_argument("spec")
     p.add_argument("-o", "--output", required=True, help="build context directory (replaced if it exists)")
+    p.add_argument("--arch", default="", choices=["", *ARCHES], help="one of the spec's arches (default: its first)")
     p.set_defaults(func=_compile)
 
     p = sub.add_parser("inspect-iso", help="report an ISO's boot structures and payload")

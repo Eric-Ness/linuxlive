@@ -25,6 +25,7 @@
   },
   "id": "borne-linux",
   "iso": {
+    "arch": "amd64",
     "file_name": "borne-linux-0.1-ubuntu-amd64.iso",
     "kernel_args": "boot=casper quiet splash ---",
     "layout": "casper",

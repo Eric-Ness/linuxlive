@@ -59,6 +59,7 @@ def add_branding(ctx: BuildContext, plan: Plan) -> None:
                 "LL_LOGO": f"/usr/share/pixmaps/{LOGO_NAME}.png",
                 "LL_LOGO_ICON": LOGO_NAME,
                 "LL_ACCENT_RGB": accent_rgb,
+                "LL_ARCH": plan.arch.name,
                 **options.branding_values(plan),
             }
         ),
@@ -244,6 +245,10 @@ def add_iso_env(ctx: BuildContext, plan: Plan) -> None:
                 "LL_VOLID": plan.volid,
                 "LL_ISO_NAME": plan.iso_name,
                 "LL_LIVE_LAYOUT": plan.live_layout,
+                # The CPU: its UEFI file names, and whether it also boots on BIOS.
+                "LL_ARCH": plan.arch.name,
+                "LL_EFI": plan.arch.efi,
+                "LL_BIOS": "1" if plan.arch.bios else "0",
                 "LL_MARKER": plan.marker,
                 "LL_HOSTNAME": plan.hostname,
                 "LL_FLATPAKS": " ".join(app.flatpak for app in plan.apps),

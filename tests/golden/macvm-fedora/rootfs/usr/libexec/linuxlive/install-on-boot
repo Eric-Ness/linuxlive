@@ -1,0 +1,5 @@
+#!/bin/sh
+# Opens the installer at login when the live system was started from the
+# boot menu's "Install" entry (kernel parameter linuxlive.install).
+grep -qw linuxlive.install /proc/cmdline || exit 0
+exec /usr/libexec/linuxlive/installer

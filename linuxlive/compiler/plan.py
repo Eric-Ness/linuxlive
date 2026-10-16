@@ -30,6 +30,27 @@ MARKER_DIR = ".disk"
 
 
 @dataclass(frozen=True)
+class Arch:
+    """One CPU architecture, as each tool names it."""
+
+    name: str  # Debian's and the ISO file name's: amd64, arm64
+    machine: str  # the kernel's and Flatpak's: x86_64, aarch64
+    efi: str  # UEFI's file suffix: x64 (BOOTX64.EFI, shimx64.efi), aa64
+    grub_target: str  # grub-install's UEFI target
+    bios: bool  # also boots on BIOS (El Torito and MBR GRUB)
+
+    @property
+    def boot_efi(self) -> str:
+        return f"BOOT{self.efi.upper()}.EFI"
+
+
+ARCHES = {
+    "amd64": Arch("amd64", "x86_64", "x64", "x86_64-efi", bios=True),
+    "arm64": Arch("arm64", "aarch64", "aa64", "arm64-efi", bios=False),
+}
+
+
+@dataclass(frozen=True)
 class Plan:
     spec: Spec
     base: Base
@@ -51,8 +72,15 @@ class Plan:
     kiosk_app: App | None = None
     kiosk_packages: tuple[str, ...] = ()
     kiosk_x11: bool = False
-    # The CPU architecture, as Flatpak names it.
-    flatpak_arch: str = "x86_64"
+    arch: Arch = ARCHES["amd64"]
+
+    @property
+    def flatpak_arch(self) -> str:
+        return self.arch.machine
+
+    def base_packages(self, kind: str) -> tuple[str, ...]:
+        """The base's package list for this plan's architecture."""
+        return self.base.packages(kind, self.arch.name)
 
     @property
     def wallpaper_path(self) -> str:
@@ -86,6 +114,7 @@ class Plan:
                 "file_name": self.iso_name,
                 "layout": self.live_layout,
                 "kernel_args": self.kernel_args,
+                "arch": self.arch.name,
                 "persistence": s.persistence,
             },
         }
@@ -125,7 +154,13 @@ def flathub_app(app_id: str) -> App:
     return App(id=app_id, name=app_id, flatpak=app_id)
 
 
-def plan_build(spec: Spec, catalog: Catalog) -> Plan:
+def plan_build(spec: Spec, catalog: Catalog, arch: str = "") -> Plan:
+    """The build for one of the spec's architectures (its first when not given)."""
+    arch = arch or spec.arches[0]
+    if arch not in ARCHES:
+        raise CompileError(f"no architecture {arch!r}; linuxlive builds {', '.join(ARCHES)}")
+    if arch not in spec.arches:
+        raise CompileError(f"the spec builds for {', '.join(spec.arches)}, not {arch}; add it to arches")
     base = catalog.bases[spec.base]
     desktop = catalog.desktops[spec.desktop]
     variant = catalog.variant(spec.desktop, spec.base)
@@ -148,7 +183,7 @@ def plan_build(spec: Spec, catalog: Catalog) -> Plan:
         variant=variant,
         apps=tuple(catalog.apps[a] for a in spec.apps) + tuple(flathub_app(a) for a in spec.flathub),
         volid=volid,
-        iso_name=f"{spec.id}-{safe_version}-{spec.base}-amd64.iso",
+        iso_name=f"{spec.id}-{safe_version}-{spec.base}-{arch}.iso",
         marker=f"{MARKER_DIR}/linuxlive-{volid.lower()}",
         live_layout=layout,
         kernel_args=kernel_args,
@@ -162,4 +197,5 @@ def plan_build(spec: Spec, catalog: Catalog) -> Plan:
         kiosk_app=(catalog.apps.get(spec.kiosk) or flathub_app(spec.kiosk)) if spec.kiosk else None,
         kiosk_packages=catalog.kiosk_packages.get(spec.base, ()) if spec.kiosk else (),
         kiosk_x11=bool(spec.kiosk) and spec.base in catalog.kiosk_x11,
+        arch=ARCHES[arch],
     )

@@ -25,6 +25,7 @@
   },
   "id": "aula-linux",
   "iso": {
+    "arch": "amd64",
     "file_name": "aula-linux-0.1-ubuntu-amd64.iso",
     "kernel_args": "boot=casper quiet splash ---",
     "layout": "casper",

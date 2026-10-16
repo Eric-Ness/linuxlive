@@ -32,6 +32,12 @@ class Base:
     # bootloader packages it installs onto the target disk.
     installer_packages: tuple[str, ...] = ()
     bootloader_packages: tuple[str, ...] = ()
+    # Per-architecture replacements for the package lists above (arm64: ...).
+    arch_packages: dict[str, dict[str, tuple[str, ...]]] = field(default_factory=dict)
+
+    def packages(self, kind: str, arch: str) -> tuple[str, ...]:
+        """A package list (efi_packages, bootloader_packages, ...) for one architecture."""
+        return self.arch_packages.get(arch, {}).get(kind, getattr(self, kind))
 
 
 @dataclass(frozen=True)
@@ -130,6 +136,10 @@ def parse_catalog(raw: dict) -> Catalog:
             replaced_packages=_pairs(b.get("replaced_packages"), f"{where}.replaced_packages"),
             installer_packages=_strings(b.get("installer_packages"), f"{where}.installer_packages"),
             bootloader_packages=_strings(b.get("bootloader_packages"), f"{where}.bootloader_packages"),
+            arch_packages={
+                arch: {kind: _strings(names, f"{where}.{arch}.{kind}") for kind, names in (b.get(arch) or {}).items()}
+                for arch in ("arm64",) if b.get(arch)
+            },
         )
     desktops = {}
     for key, d in (raw.get("desktops") or {}).items():

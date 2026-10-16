@@ -30,6 +30,7 @@
   },
   "id": "werkbank-linux",
   "iso": {
+    "arch": "amd64",
     "file_name": "werkbank-linux-0.1-fedora-amd64.iso",
     "kernel_args": "root=live:CDLABEL=WERKBANK_LINUX_0_1 rd.live.image rd.live.overlay.overlayfs=1 quiet rhgb",
     "layout": "liveos",

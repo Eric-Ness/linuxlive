@@ -7,7 +7,7 @@
 #       permissions:
 #         contents: read
 #         packages: write
-#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.7.0
+#       uses: Eric-Ness/linuxlive/.github/workflows/build.yml@v0.8.0
 #       with:
 #         publish-image: true
 #
@@ -19,6 +19,12 @@
 # checked out from linuxlive-repository at linuxlive-ref, which defaults to the
 # release this file belongs to, so a caller pinned to a tag gets that tag's
 # pipeline. linuxlive's own CI (spike.yml) passes its own commit instead.
+#
+# A spec's arches (amd64 by default; arm64 for virtual machines on
+# Apple-silicon Macs) each get a build: amd64's job is "build", arm64's "build
+# arm64", on GitHub's arm64 runners, whose names, artifacts and image gain
+# "-arm64". Those runners have no KVM, so arm64 ISOs are boot-tested emulated:
+# slower, in UEFI modes only (ARM has no BIOS).
 #
 # Artifacts: results-<name> (logs, screenshots and result.json files, which
 # `python -m linuxlive verify-results` re-checks) and, with keep-iso,
@@ -59,16 +65,56 @@ on:
         description: Pipeline version to build with (a tag, branch or commit)
         type: string
         # Changed with each release; tests/test_workflows.py checks it matches pyproject.toml.
-        default: v0.7.0
+        default: v0.8.0
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  build:
+  arches:
     runs-on: ubuntu-24.04
-    timeout-minutes: 340
+    outputs:
+      arches: ${{ steps.read.outputs.arches }}
+    steps:
+      # Step names differ from the build's own, which linuxlive.com's build page follows.
+      - name: Fetch the distro
+        uses: actions/checkout@v7
+        with:
+          path: distro
+          persist-credentials: false
+      - name: Fetch linuxlive
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.linuxlive-repository }}
+          ref: ${{ inputs.linuxlive-ref }}
+          path: linuxlive
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r linuxlive/requirements.txt
+      - name: Read its architectures
+        id: read
+        env:
+          PYTHONPATH: linuxlive
+          SPEC: distro/${{ inputs.spec }}
+        run: |
+          python -m linuxlive validate "$SPEC"
+          python -c 'import json, os; from linuxlive.spec import load_spec; print("arches=" + json.dumps(list(load_spec(os.environ["SPEC"]).arches)))' >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  build:
+    needs: arches
+    # amd64's job keeps the name it always had.
+    name: ${{ matrix.arch == 'amd64' && 'build' || format('build {0}', matrix.arch) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.arches.outputs.arches) }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    # Emulated ARM boots are slow; 360 is GitHub's most for a hosted runner.
+    timeout-minutes: ${{ matrix.arch == 'arm64' && 360 || 340 }}
     # No permissions of its own: it has the caller's (contents: read, and
     # packages: write when it publishes the image).
     env:
@@ -76,6 +122,7 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}/linuxlive
       SPEC: distro/${{ inputs.spec }}
       RESULTS: build/results
+      ARCH: ${{ matrix.arch }}
     steps:
       - name: Check out the distro
         uses: actions/checkout@v7
@@ -104,7 +151,7 @@ jobs:
           LINUXLIVE_REPOSITORY: ${{ inputs.linuxlive-repository }}
           LINUXLIVE_REF: ${{ inputs.linuxlive-ref }}
         run: |
-          # --online: Flathub's API confirms the spec's flathub apps before anything is built.
+          # --online: Flathub's API confirms the spec's flathub apps (for every arch) before anything is built.
           python -m linuxlive validate --online "$SPEC"
           mkdir -p "$RESULTS"
           # Names come from the spec, so pass them on through files, never through the shell.
@@ -114,6 +161,9 @@ jobs:
 
           spec = load_spec(os.environ["SPEC"])
           name = os.environ["NAME_INPUT"] or spec.id
+          arch = os.environ["ARCH"]
+          if arch != "amd64":
+              name = f"{name}-{arch}"
           if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name):
               raise SystemExit(f"name {name!r}: use letters, digits, dots, dashes and underscores")
           pipeline = subprocess.run(["git", "-C", "linuxlive", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
@@ -126,6 +176,7 @@ jobs:
               "run_id": os.environ["GITHUB_RUN_ID"],
               "build_id": build_id,
               "base": spec.base,
+              "arch": arch,
               "spec": os.environ["SPEC_INPUT"],
               "linuxlive": {"repository": os.environ["LINUXLIVE_REPOSITORY"], "ref": os.environ["LINUXLIVE_REF"], "commit": pipeline},
           }
@@ -139,7 +190,7 @@ jobs:
               env.write(f"NAME={name}\nIMAGE=localhost/linuxlive-{name.lower()}:ci\nISO=build/{name}.iso\nREGISTRY_IMAGE={registry}\n")
               env.write(f"PUBLISH={'1' if 'image' in meta else ''}\n")
               env.write(f"BUILD_ID={build_id}\n")
-          print(f"Building {spec.name} {spec.version} ({spec.base}, {spec.desktop}) as {name}, with linuxlive {pipeline[:12]}")
+          print(f"Building {spec.name} {spec.version} ({spec.base}, {spec.desktop}, {arch}) as {name}, with linuxlive {pipeline[:12]}")
           PY
           cat "$RESULTS/meta.json"
 
@@ -154,10 +205,17 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-utils ovmf squashfs-tools xorriso grub-pc-bin grub-common mtools dosfstools skopeo
+          if [ "$ARCH" = arm64 ]; then
+            # UEFI only (AAVMF); no BIOS GRUB to build.
+            sudo apt-get install -y --no-install-recommends \
+              qemu-system-arm qemu-efi-aarch64 qemu-utils squashfs-tools xorriso mtools dosfstools skopeo
+            qemu-system-aarch64 --version | head -n 1
+          else
+            sudo apt-get install -y --no-install-recommends \
+              qemu-system-x86 qemu-utils ovmf squashfs-tools xorriso grub-pc-bin grub-common mtools dosfstools skopeo
+            qemu-system-x86_64 --version | head -n 1
+          fi
           podman --version
-          qemu-system-x86_64 --version | head -n 1
           nproc; free -g
 
       - name: Enable KVM
@@ -174,7 +232,7 @@ jobs:
 
       - name: Compile spec
         run: |
-          python -m linuxlive compile "$SPEC" -o build/ctx
+          python -m linuxlive compile "$SPEC" -o build/ctx --arch "$ARCH"
           if [ -n "$PUBLISH" ]; then
             # Where the installer installs from and installed systems update from.
             printf 'LL_IMAGE_REF=%s:latest\n' "$REGISTRY_IMAGE" > build/ctx/rootfs/usr/lib/linuxlive/image.env
@@ -207,12 +265,14 @@ jobs:
 
       - name: Boot tests
         run: |
-          python linuxlive/scripts/boottest.py --iso "$ISO" --mode uefi-usb --session --out "$RESULTS/modes/uefi-usb" || true
+          python linuxlive/scripts/boottest.py --arch "$ARCH" --iso "$ISO" --mode uefi-usb --session --out "$RESULTS/modes/uefi-usb" || true
           # If the first boot never reached userspace the rest will not either;
-          # skip them rather than spend hours timing out.
+          # skip them rather than spend hours timing out. ARM has no BIOS.
+          modes="uefi-sb-cd uefi-cd bios-cd bios-usb"
+          if [ "$ARCH" = arm64 ]; then modes="uefi-sb-cd uefi-cd"; fi
           if grep -q LINUXLIVE_BOOTCHECK_START "$RESULTS/modes/uefi-usb/serial.log" 2>/dev/null; then
-            for mode in uefi-sb-cd uefi-cd bios-cd bios-usb; do
-              python linuxlive/scripts/boottest.py --iso "$ISO" --mode "$mode" --out "$RESULTS/modes/$mode" || true
+            for mode in $modes; do
+              python linuxlive/scripts/boottest.py --arch "$ARCH" --iso "$ISO" --mode "$mode" --out "$RESULTS/modes/$mode" || true
             done
           else
             echo "::error::The first boot never reached userspace; skipped the other boot modes"
@@ -233,8 +293,8 @@ jobs:
           fi
           cp --sparse=always "$ISO" build/stick.img
           truncate -s 8G build/stick.img
-          python linuxlive/scripts/boottest.py --iso "$ISO" --mode persist-1 --disk build/stick.img --session --out "$RESULTS/modes/persist-1" || true
-          python linuxlive/scripts/boottest.py --iso "$ISO" --mode persist-2 --disk build/stick.img --session --out "$RESULTS/modes/persist-2" || true
+          python linuxlive/scripts/boottest.py --arch "$ARCH" --iso "$ISO" --mode persist-1 --disk build/stick.img --session --out "$RESULTS/modes/persist-1" || true
+          python linuxlive/scripts/boottest.py --arch "$ARCH" --iso "$ISO" --mode persist-2 --disk build/stick.img --session --out "$RESULTS/modes/persist-2" || true
           rm -f build/stick.img
 
       - name: Install test
@@ -260,10 +320,12 @@ jobs:
             extra+=(--autoinstall-autologin spec)
           fi
           qemu-img create -f qcow2 build/disk.qcow2 64G
-          python linuxlive/scripts/boottest.py --iso "$ISO" --mode install --disk build/disk.qcow2 "${extra[@]}" --out "$RESULTS/modes/install" || true
+          python linuxlive/scripts/boottest.py --arch "$ARCH" --iso "$ISO" --mode install --disk build/disk.qcow2 "${extra[@]}" --out "$RESULTS/modes/install" || true
           if grep -q LINUXLIVE_INSTALLED "$RESULTS/modes/install/serial.log" 2>/dev/null; then
-            python linuxlive/scripts/boottest.py --iso "$ISO" --mode installed-uefi-sb --disk build/disk.qcow2 --session --out "$RESULTS/modes/installed-uefi-sb" || true
-            python linuxlive/scripts/boottest.py --iso "$ISO" --mode installed-bios --disk build/disk.qcow2 --out "$RESULTS/modes/installed-bios" || true
+            python linuxlive/scripts/boottest.py --arch "$ARCH" --iso "$ISO" --mode installed-uefi-sb --disk build/disk.qcow2 --session --out "$RESULTS/modes/installed-uefi-sb" || true
+            if [ "$ARCH" != arm64 ]; then
+              python linuxlive/scripts/boottest.py --arch "$ARCH" --iso "$ISO" --mode installed-bios --disk build/disk.qcow2 --out "$RESULTS/modes/installed-bios" || true
+            fi
           fi
           rm -f build/disk.qcow2
 
@@ -289,7 +351,7 @@ jobs:
           {
             echo "## linuxlive build: ${NAME:-not started}"
             if [ -f build/verify.txt ] && grep -q '^VERIFY OK' build/verify.txt; then
-              echo "Built, booted in five modes and verified: $(tail -n 1 build/verify.txt)."
+              echo "Built, booted and verified ($ARCH): $(tail -n 1 build/verify.txt)."
             else
               echo "The build or a check failed. Open the failed step above for the reason."
             fi

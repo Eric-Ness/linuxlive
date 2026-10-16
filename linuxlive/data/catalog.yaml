@@ -28,6 +28,11 @@ bases:
     # Carried as .debs (resolved against the finished image) and installed by
     # the installer onto the target disk, where their postinsts find a real one.
     bootloader_packages: [grub-efi-amd64, grub-efi-amd64-signed, shim-signed, grub-pc-bin, efibootmgr, mokutil]
+    # ARM64 (arches: [arm64] in a spec): the same with arm64's boot chain.
+    # ARM computers have no BIOS, so there is no BIOS GRUB to carry.
+    arm64:
+      efi_packages: [shim-signed, grub-efi-arm64-signed]
+      bootloader_packages: [grub-efi-arm64, grub-efi-arm64-signed, shim-signed, efibootmgr, mokutil]
 
   fedora:
     label: Fedora 44

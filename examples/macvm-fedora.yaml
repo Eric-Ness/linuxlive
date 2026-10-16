@@ -1,0 +1,17 @@
+# Example spec: TestOS for ARM64, Fedora 44 with KDE Plasma, for virtual machines
+# on Apple-silicon Macs (UTM, Parallels, VMware Fusion). CI builds it on an
+# arm64 runner and boot-tests it emulated, in UEFI modes.
+schema_version: 1
+name: TestOS ARM
+id: testos-arm
+version: "0.1"
+base: fedora
+desktop: kde
+arches: [arm64]
+apps:
+  - firefox
+  - vlc
+branding:
+  wallpaper: assets/wallpaper.png
+  logo: assets/logo.png
+  accent_color: "#c2185b"

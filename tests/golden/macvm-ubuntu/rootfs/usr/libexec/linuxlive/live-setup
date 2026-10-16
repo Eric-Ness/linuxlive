@@ -1,0 +1,96 @@
+#!/bin/sh
+# Adjusts a live session at boot. linuxlive-live.service runs this only when
+# the ISO was booted (casper or dmsquash-live). The live root is a writable
+# overlay that is thrown away at shutdown, so none of it reaches a disk.
+set -eu
+
+log() { printf 'linuxlive-live-setup: %s\n' "$*"; }
+
+# Nothing updated in a live session survives shutdown, so it gets no update
+# notifiers: not Ubuntu's (with its Ubuntu Pro reminder), not KDE Discover's,
+# and GNOME Software neither checks for updates nor downloads them. Fedora's
+# livesys does the same for its own desktops.
+for entry in update-notifier ubuntu-advantage-notification org.kde.discover.notifier; do
+	if [ -e "/etc/xdg/autostart/$entry.desktop" ]; then
+		rm -f "/etc/xdg/autostart/$entry.desktop"
+		log "no $entry in the live session"
+	fi
+done
+schemas=/usr/share/glib-2.0/schemas
+if [ -f "$schemas/org.gnome.software.gschema.xml" ]; then
+	# Desktop-scoped values beat plain ones, so cover the sessions that have them.
+	for scope in "" :ubuntu :X-Cinnamon; do
+		printf '[org.gnome.software%s]\nallow-updates=false\ndownload-updates=false\n\n' "$scope"
+	done >"$schemas/zz_linuxlive_live.gschema.override"
+	glib-compile-schemas "$schemas"
+	log "GNOME Software: no update checks or downloads"
+fi
+
+# Fedora's livesys points Plasma Welcome's live page at Anaconda (liveinst),
+# which these images do not have. With no installer named, the page only
+# welcomes the user.
+for rc in /home/*/.config/plasma-welcomerc; do
+	[ -f "$rc" ] || continue
+	installer=$(sed -n 's/^LiveInstaller=//p' "$rc")
+	if [ -n "$installer" ] && [ ! -e "/usr/share/applications/$installer.desktop" ]; then
+		sed -i '/^LiveInstaller=/d' "$rc"
+		log "Plasma Welcome: no $installer installer to offer"
+	fi
+done
+
+# Nor does Plasma Welcome open at all: its first page says "Welcome to
+# Fedora!" beside Fedora's logo. A KDED module starts it unless the user's
+# plasma-welcomerc says it was seen (a version newer than any Plasma). It
+# always starts it when LiveEnvironment is true, which livesys writes, so
+# that goes too; the file may not exist yet.
+if [ -e /usr/libexec/plasma-welcome ] || command -v plasma-welcome >/dev/null 2>&1; then
+	for home in /home/*; do
+		[ -d "$home" ] || continue
+		rc=$home/.config/plasma-welcomerc
+		/usr/libexec/linuxlive/ini-set "$rc" General LiveEnvironment false
+		/usr/libexec/linuxlive/ini-set "$rc" General ShouldShow false
+		/usr/libexec/linuxlive/ini-set "$rc" General LastSeenVersion 99.0.0
+		chown --reference="$home" "$home/.config" "$rc"
+		log "Plasma Welcome: will not open for $(basename "$home")"
+	done
+fi
+
+# Ubuntu limits unprivileged user namespaces through AppArmor, and in casper's
+# live session (an overlay root) that stops Flatpak's sandbox: bubblewrap
+# cannot make its namespace, so no Flatpak app starts ("ldconfig failed").
+# The live system is thrown away at shutdown; installed systems keep the limit.
+userns=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+if [ -w "$userns" ] && [ "$(cat "$userns")" = 1 ]; then
+	printf '0\n' >"$userns"
+	log "Flatpak apps may make their sandbox (apparmor_restrict_unprivileged_userns=0, live session only)"
+fi
+
+# The computer's name (settings.hostname, or the id). Fedora's livesys names
+# every live system localhost-live.
+# shellcheck disable=SC2154 # LL_* settings come from /usr/lib/linuxlive/branding.env
+name=$(. /usr/lib/linuxlive/branding.env && printf '%s' "${LL_HOSTNAME:-$LL_ID}")
+if [ -n "$name" ] && [ "$(cat /proc/sys/kernel/hostname)" != "$name" ]; then
+	printf '%s\n' "$name" >/etc/hostname
+	printf '%s' "$name" >/proc/sys/kernel/hostname
+	log "computer name: $name"
+fi
+
+# The installer's window runs install-to-disk as root through sudo -n, with
+# no password to ask for. Ubuntu's live user may use sudo freely; Fedora's
+# (from livesys) need not, and then the window finds no disks. So the live
+# session's users may run that one command. This root is thrown away at
+# shutdown and installs copy the image, not it, so no installed system keeps it.
+rules=/etc/sudoers.d/linuxlive-live-installer
+: >"$rules"
+for home in /home/*; do
+	[ -d "$home" ] || continue
+	user=$(stat -c %U "$home")
+	[ "$user" != root ] && [ "$user" != UNKNOWN ] || continue
+	printf '%s ALL=(root) NOPASSWD: /usr/libexec/linuxlive/install-to-disk\n' "$user" >>"$rules"
+	log "the installer: $user may run it"
+done
+chmod 0440 "$rules"
+if command -v visudo >/dev/null 2>&1 && ! visudo -cqf "$rules"; then
+	log "the installer's sudo rule is not valid; removing it"
+	rm -f "$rules"
+fi

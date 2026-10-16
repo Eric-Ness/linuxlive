@@ -255,11 +255,13 @@ cp "$DEBS"/*.deb "$target/tmp/linuxlive-debs/"
 in_target sh -c 'DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/linuxlive-debs/*.deb' >/dev/null || die "installing the bootloader packages failed"
 rm -rf "$target/tmp/linuxlive-debs" "$target$DEBS"
 # Twice: as EFI/ubuntu with a firmware boot entry, and with --removable as
-# EFI/BOOT/BOOTX64.EFI, which every UEFI firmware starts even without an entry
+# EFI/BOOT/BOOTX64.EFI (BOOTAA64.EFI on ARM), which every UEFI firmware starts even without an entry
 # (Ubuntu's grub-install has no --force-extra-removable to do both at once).
 # Output goes to the log, so a failure says why.
+# shellcheck disable=SC2154 # LL_ARCH comes from branding.env
+case ${LL_ARCH:-amd64} in arm64) efi_target=arm64-efi ;; *) efi_target=x86_64-efi ;; esac
 efi_grub() {
-	in_target grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --uefi-secure-boot "$@"
+	in_target grub-install --target="$efi_target" --efi-directory=/boot/efi --bootloader-id=ubuntu --uefi-secure-boot "$@"
 }
 if [ -d /sys/firmware/efi ]; then
 	# Some firmware refuses new boot entries; the fallback path still boots.
@@ -271,7 +273,10 @@ else
 	efi_grub --no-nvram || die "installing GRUB for UEFI failed"
 fi
 efi_grub --removable || die "installing GRUB at EFI/BOOT failed"
-in_target grub-install --target=i386-pc "$disk" || die "installing GRUB for BIOS failed"
+# PCs also boot the disk on BIOS; ARM computers have no BIOS.
+if [ "$efi_target" = x86_64-efi ]; then
+	in_target grub-install --target=i386-pc "$disk" || die "installing GRUB for BIOS failed"
+fi
 
 progress 88 "Preparing the first start"
 in_target update-initramfs -u -k all || die "rebuilding the initramfs failed"

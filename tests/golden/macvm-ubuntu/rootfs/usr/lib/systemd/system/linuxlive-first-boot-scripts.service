@@ -1,0 +1,21 @@
+[Unit]
+Description=The distro's own first-boot scripts (installed systems only, once)
+Documentation=https://linuxlive.com
+# Not in the live session, and only once.
+ConditionKernelCommandLine=!boot=casper
+ConditionKernelCommandLine=!rd.live.image
+ConditionPathExists=!/var/lib/linuxlive/first-boot-done
+ConditionDirectoryNotEmpty=/usr/lib/linuxlive/first-boot.d
+# After the installed system's user exists (Fedora creates it at first boot),
+# with the network, and before anyone can log in.
+After=linuxlive-firstboot.service network-online.target
+Wants=network-online.target
+Before=display-manager.service systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/linuxlive/first-boot-scripts
+TimeoutStartSec=20min
+
+[Install]
+WantedBy=multi-user.target

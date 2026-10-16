@@ -57,7 +57,15 @@ firefox:                            # needs firefox in apps
 kiosk:
   app: firefox                      # one of apps: starts full screen, no desktop
 persistence: true                   # save changes on the USB stick (Ubuntu, since v0.7.0)
+arches: [amd64, arm64]              # also an ISO for ARM64 VMs on Apple-silicon Macs (since v0.8.0)
 ```
+
+Each of `arches` gets its own ISO (`<id>-<version>-<base>-arm64.iso`) and its
+own CI job: `build` for amd64 as always, `build arm64` on GitHub's arm64
+runners. ARM64 ISOs boot through UEFI only (ARM has no BIOS) and are meant
+for virtual machines on Apple-silicon Macs: UTM, Parallels, VMware Fusion.
+GitHub's arm64 runners have no KVM, so their boot tests run emulated (QEMU's
+TCG, with longer timeouts); everything else is checked as on amd64.
 
 Apps in `flathub` are checked against Flathub's API by `validate --online`,
 which the build workflow runs first: each must exist, be an app (not a
@@ -151,8 +159,10 @@ keep working.
 | `examples/settings-cinnamon.yaml` | Varanda Linux (Brazilian Portuguese) | Fedora 44 | Cinnamon |
 | `examples/kiosk-ubuntu.yaml` | Borne Linux (a Firefox kiosk, French) | Ubuntu 26.04 | GNOME underneath |
 | `examples/kiosk-fedora.yaml` | Gioco Linux (a GCompris kiosk, Italian) | Fedora 44 | KDE underneath |
+| `examples/macvm-ubuntu.yaml` | TestOS ARM (arm64 only) | Ubuntu 26.04 | GNOME |
+| `examples/macvm-fedora.yaml` | TestOS ARM (arm64 only) | Fedora 44 | KDE Plasma |
 
-CI builds and boots all nine; it publishes only TestOS and Lawn Darts, which
+CI builds and boots all eleven; it publishes only TestOS and Lawn Darts, which
 the site offers for download. The other five prove the settings in running
 systems: the session's language and translations, the layout each desktop
 types with, the time zone, hidden entries, Firefox's open page and bookmarks,

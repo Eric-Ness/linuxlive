@@ -37,12 +37,18 @@ source "$ctx/iso.env"
 for tool in podman mksquashfs xorriso mkfs.vfat mmd mcopy; do
 	command -v "$tool" >/dev/null || die "$tool is not installed"
 done
-grub_mkimage=$(command -v grub-mkimage || command -v grub2-mkimage) || die "grub-mkimage is not installed"
-grub_pc=""
-for dir in /usr/lib/grub/i386-pc /usr/lib/grub2/i386-pc; do
-	if [[ -z $grub_pc && -f $dir/boot_hybrid.img ]]; then grub_pc=$dir; fi
-done
-[[ -n $grub_pc ]] || die "GRUB i386-pc files not found (install grub-pc-bin)"
+# The CPU (amd64 when an older context does not say): its UEFI file names,
+# and whether it boots on BIOS too, which needs GRUB's i386-pc files.
+LL_ARCH=${LL_ARCH:-amd64} LL_EFI=${LL_EFI:-x64} LL_BIOS=${LL_BIOS:-1}
+efi_boot=BOOT${LL_EFI^^}.EFI
+grub_mkimage="" grub_pc=""
+if [[ $LL_BIOS == 1 ]]; then
+	grub_mkimage=$(command -v grub-mkimage || command -v grub2-mkimage) || die "grub-mkimage is not installed"
+	for dir in /usr/lib/grub/i386-pc /usr/lib/grub2/i386-pc; do
+		if [[ -z $grub_pc && -f $dir/boot_hybrid.img ]]; then grub_pc=$dir; fi
+	done
+	[[ -n $grub_pc ]] || die "GRUB i386-pc files not found (install grub-pc-bin)"
+fi
 
 work=$(mktemp -d "${TMPDIR:-/var/tmp}/linuxlive-iso.XXXXXX")
 root=$work/rootfs
@@ -184,18 +190,18 @@ log "kernel $kver"
 # 6. Disk identity files. GRUB finds the ISO through the marker file;
 #    Ubuntu's CD GRUB image looks for .disk/info.
 mkdir -p "$iso/.disk"
-printf '%s %s "based on %s" - amd64 (%s)\n' "$LL_NAME" "$LL_VERSION" "$LL_BASE_LABEL" "$(date -u +%Y%m%d)" >"$iso/.disk/info"
+printf '%s %s "based on %s" - %s (%s)\n' "$LL_NAME" "$LL_VERSION" "$LL_BASE_LABEL" "$LL_ARCH" "$(date -u +%Y%m%d)" >"$iso/.disk/info"
 : >"$iso/$LL_MARKER"
 
 # 7. GRUB for UEFI: the image's signed shim and GRUB in a FAT image that is
 #    both the El Torito EFI entry and the GPT EFI system partition.
 efi_src=$root/usr/lib/linuxlive/efi
-for f in shimx64.efi grubx64.efi mmx64.efi; do
+for f in "shim$LL_EFI.efi" "grub$LL_EFI.efi" "mm$LL_EFI.efi"; do
 	[[ -s $efi_src/$f ]] || die "missing $efi_src/$f; the image build should have provided it"
 done
 mkdir -p "$iso/EFI/BOOT" "$iso/boot/grub"
-cp "$efi_src/shimx64.efi" "$iso/EFI/BOOT/BOOTX64.EFI"
-cp "$efi_src/grubx64.efi" "$efi_src/mmx64.efi" "$iso/EFI/BOOT/"
+cp "$efi_src/shim$LL_EFI.efi" "$iso/EFI/BOOT/$efi_boot"
+cp "$efi_src/grub$LL_EFI.efi" "$efi_src/mm$LL_EFI.efi" "$iso/EFI/BOOT/"
 cp "$ctx/iso/efi-grub.cfg" "$iso/EFI/BOOT/grub.cfg"
 cp "$ctx/iso/boot/grub/grub.cfg" "$iso/boot/grub/grub.cfg"
 efi_kib=$(($(du -sk --apparent-size "$iso/EFI" | cut -f1) + 4096))
@@ -205,14 +211,16 @@ mkfs.vfat -C "$efi_img" "$efi_kib" >/dev/null
 mmd -i "$efi_img" ::/EFI ::/EFI/BOOT
 mcopy -i "$efi_img" "$iso"/EFI/BOOT/* ::/EFI/BOOT/
 
-# 8. GRUB for BIOS: an El Torito core image that finds the ISO by its marker
-#    file, with the module directory alongside for anything else it loads.
+# 8. GRUB for BIOS (PCs): an El Torito core image that finds the ISO by its
+#    marker file, with the module directory alongside for anything else it loads.
 bios_image=boot/grub/i386-pc/eltorito.img
-mkdir -p "$iso/boot/grub/i386-pc"
-cp "$grub_pc"/*.mod "$grub_pc"/*.lst "$iso/boot/grub/i386-pc/"
-"$grub_mkimage" -d "$grub_pc" -O i386-pc-eltorito -p /boot/grub -c "$ctx/iso/bios-embed.cfg" \
-	-o "$iso/$bios_image" \
-	biosdisk iso9660 part_msdos part_gpt search search_fs_file normal configfile linux echo test ls
+if [[ $LL_BIOS == 1 ]]; then
+	mkdir -p "$iso/boot/grub/i386-pc"
+	cp "$grub_pc"/*.mod "$grub_pc"/*.lst "$iso/boot/grub/i386-pc/"
+	"$grub_mkimage" -d "$grub_pc" -O i386-pc-eltorito -p /boot/grub -c "$ctx/iso/bios-embed.cfg" \
+		-o "$iso/$bios_image" \
+		biosdisk iso9660 part_msdos part_gpt search search_fs_file normal configfile linux echo test ls
+fi
 
 # 9. Checksums for Ubuntu's medium check. casper-md5check reads md5sum.txt in
 #    every live session, and its service fails when the file is missing.
@@ -225,24 +233,29 @@ if [[ $LL_LIVE_LAYOUT == casper ]]; then
 fi
 
 # 10. The hybrid image: El Torito for optical media, MBR and GPT for USB sticks.
-#     The layout follows Ubuntu's own desktop ISOs.
+#     The layout follows Ubuntu's own desktop ISOs; ARM's has no BIOS parts.
 log "writing $out"
 mkdir -p "$(dirname "$out")"
+bios=()
+if [[ $LL_BIOS == 1 ]]; then
+	bios=(--grub2-mbr "$grub_pc/boot_hybrid.img" --mbr-force-bootable)
+fi
+eltorito=(-e '--interval:appended_partition_2:all::' -no-emul-boot)
+if [[ $LL_BIOS == 1 ]]; then
+	eltorito=(-b "/$bios_image" -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info -eltorito-alt-boot "${eltorito[@]}")
+fi
 xorriso -as mkisofs \
 	-iso-level 3 -full-iso9660-filenames -joliet -joliet-long -rational-rock \
 	-volid "$LL_VOLID" \
 	-output "$out.partial" \
-	--grub2-mbr "$grub_pc/boot_hybrid.img" \
+	"${bios[@]}" \
 	--protective-msdos-label \
 	-partition_offset 16 \
-	--mbr-force-bootable \
 	-append_partition 2 28732ac11ff8d211ba4b00a0c93ec93b "$efi_img" \
 	-appended_part_as_gpt \
 	-iso_mbr_part_type a2a0d0ebe5b9334487c068b6b72699c7 \
 	-c /boot.catalog \
-	-b "/$bios_image" -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info \
-	-eltorito-alt-boot \
-	-e '--interval:appended_partition_2:all::' -no-emul-boot \
+	"${eltorito[@]}" \
 	"$iso"
 mv "$out.partial" "$out"
 (cd "$(dirname "$out")" && sha256sum "$(basename "$out")" >"$(basename "$out").sha256")

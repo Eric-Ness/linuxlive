@@ -69,7 +69,7 @@ COPY rootfs/ /
 # Keep a copy of the signed Secure Boot chain where the ISO assembler looks for it.
 RUN set -eux; \\
     mkdir -p /usr/lib/linuxlive/efi; \\
-    for name in shimx64.efi grubx64.efi mmx64.efi; do \\
+    for name in shim{plan.arch.efi}.efi grub{plan.arch.efi}.efi mm{plan.arch.efi}.efi; do \\
         found=$(find /usr/lib/efi /usr/lib/bootupd/updates /boot/efi -type f -name "$name" -path '*fedora*' 2>/dev/null | sort | head -n 1); \\
         test -n "$found" || {{ echo "missing $name in the base image" >&2; exit 1; }}; \\
         cp "$found" "/usr/lib/linuxlive/efi/$name"; \\
