@@ -223,10 +223,16 @@ session_errors() {
 	{
 		if [ -f "$home/.xsession-errors" ]; then tail -n 300 "$home/.xsession-errors"; fi
 		journalctl -b --no-pager -o cat "_UID=$uid" 2>/dev/null | tail -n 500
-		journalctl -k -b --no-pager -o cat 2>/dev/null | grep -i segfault | tail -n 5
+		journalctl -k -b --no-pager -o cat 2>/dev/null | grep -iE 'segfault|out of memory|oom-kill' | tail -n 5
 		journalctl -b --no-pager -o cat -t systemd-coredump 2>/dev/null | head -n 20
-	} | grep -iE 'error|critical|fatal|segfault|crash|traceback|assert|dumped core|signal|#[0-9]+ ' | tail -n 20 |
+	} | grep -iE 'error|critical|fatal|segfault|crash|traceback|assert|dumped core|signal|memory|oom|#[0-9]+ ' | tail -n 20 |
 		while IFS= read -r line; do fact session_error "$line"; done
+	# Ubuntu's apport keeps crashes in /var/crash rather than systemd-coredump.
+	for report in /var/crash/*.crash; do
+		[ -f "$report" ] || continue
+		grep -aE '^(ExecutablePath|Signal|Title|ProcStatus):' "$report" 2>/dev/null | head -n 4 |
+			while IFS= read -r line; do fact crash_report "$(basename "$report"): $line"; done
+	done
 }
 
 failed_units() {
@@ -301,14 +307,15 @@ casper_md5check() {
 }
 
 # Plasma saves the layout a little after the login script changes it, so give
-# it up to two minutes to show the distro logo before reporting what is there.
+# it up to six minutes (a slow, emulated Plasma takes long) to show the distro
+# logo before reporting what is there.
 kde_launcher_icons() {
 	# shellcheck disable=SC2154 # LL_LOGO_ICON comes from branding.env
 	want=$(. /usr/lib/linuxlive/branding.env && printf '%s' "$LL_LOGO_ICON")
 	rc="$(getent passwd "$1" | cut -d: -f6)/.config/plasma-org.kde.plasma.desktop-appletsrc"
 	found=""
 	tries=0
-	while [ "$tries" -lt 60 ]; do
+	while [ "$tries" -lt 180 ]; do
 		found=$(launcher_icons_in "$rc")
 		case " $found " in *" $want "*) break ;; esac
 		tries=$((tries + 1))
@@ -632,6 +639,13 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 					[ "$try" -lt 3 ] && sleep 15
 				done
 				fact flatpak_runs "$app=$result"
+				if [ "$result" != ok ]; then
+					# Why, in Flatpak's own words, and the instance directory it could not use.
+					runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" \
+						timeout 120 flatpak run -v --command=true "$app" 2>&1 | grep -viE '^F: (Running|Opening|Mounting)' | tail -n 8 |
+						while IFS= read -r line; do fact flatpak_run_debug "$app: $line"; done
+					fact flatpak_run_debug "$app: $(ls -ld "/run/user/$uid" "/run/user/$uid/.flatpak" 2>&1 | tr '\n' ' ')"
+				fi
 			done
 		fi
 		# The installer's launcher on the desktop, as GNOME's desktop icons (DING)
