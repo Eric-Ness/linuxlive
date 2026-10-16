@@ -21,6 +21,8 @@ def _validate(args) -> int:
         problems, found = check_apps(spec.flathub)
         for app in found:
             print(f"  flathub: {app.id} ({app.name}){' verified' if app.verified else ''}, {', '.join(app.arches)}")
+            if app.eol:
+                print(f"  warning: {app.id} is built on a runtime that gets no more updates; Flathub may list it under a new ID")
         if problems:
             raise SpecError(args.spec, problems)
     extra = f" and {len(spec.flathub)} from Flathub" if spec.flathub else ""

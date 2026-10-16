@@ -27,6 +27,8 @@ class FlathubApp:
     arches: tuple[str, ...]
     verified: bool
     type: str
+    # Built on a runtime that gets no more updates: often an app that moved to a new ID.
+    eol: bool = False
 
 
 class FlathubError(RuntimeError):
@@ -66,6 +68,7 @@ def lookup(app_id: str) -> FlathubApp | None:
         arches=tuple(summary.get("arches") or ()),
         verified=bool(verification.get("verified")),
         type=str(appstream.get("type") or ""),
+        eol=bool((summary.get("metadata") or {}).get("runtimeIsEol")),
     )
 
 
