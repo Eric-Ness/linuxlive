@@ -14,7 +14,7 @@ from tests.conftest import spec_data, write_spec
 
 FAKE = {
     "/appstream/org.gnome.Chess": {"id": "org.gnome.Chess", "name": "GNOME Chess", "type": "desktop-application"},
-    "/summary/org.gnome.Chess": {"arches": ["aarch64", "x86_64"]},
+    "/summary/org.gnome.Chess": {"arches": ["aarch64", "x86_64"], "metadata": {"runtimeIsEol": False}},
     "/verification/org.gnome.Chess/status": {"verified": True},
     "/appstream/com.example.OnlyArm": {"id": "com.example.OnlyArm", "name": "Only Arm", "type": "desktop-application"},
     "/summary/com.example.OnlyArm": {"arches": ["aarch64"]},
@@ -116,3 +116,16 @@ def test_an_unreachable_flathub_is_an_error_not_a_pass(workspace, monkeypatch, c
     spec = write_spec(workspace, spec_data(flathub=["org.gnome.Chess"]))
     assert cli.main(["validate", "--online", str(spec)]) == 2
     assert "did not answer" in capsys.readouterr().err
+
+
+def test_an_app_on_an_end_of_life_runtime_is_flagged(workspace, monkeypatch, capsys):
+    fake = {
+        "/appstream/org.example.Old": {"id": "org.example.Old", "name": "Old", "type": "desktop-application"},
+        "/summary/org.example.Old": {"arches": ["x86_64"], "metadata": {"runtimeIsEol": True}},
+        "/verification/org.example.Old/status": {"verified": True},
+    }
+    monkeypatch.setattr(flathub, "_get", lambda path, attempts=4: fake.get(path))
+    assert flathub.lookup("org.example.Old").eol
+    spec = write_spec(workspace, spec_data(flathub=["org.example.Old"]))
+    assert cli.main(["validate", "--online", str(spec)]) == 0
+    assert "warning: org.example.Old is built on a runtime that gets no more updates" in capsys.readouterr().out

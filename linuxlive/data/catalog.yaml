@@ -82,7 +82,7 @@ desktops:
 apps:
   firefox: {name: Firefox, flatpak: org.mozilla.firefox, kiosk_args: [--kiosk]}
   chromium: {name: Chromium, flatpak: org.chromium.Chromium, kiosk_args: [--kiosk, --noerrdialogs]}
-  thunderbird: {name: Thunderbird, flatpak: org.mozilla.Thunderbird}
+  thunderbird: {name: Thunderbird, flatpak: org.mozilla.thunderbird}
   libreoffice: {name: LibreOffice, flatpak: org.libreoffice.LibreOffice}
   vlc: {name: VLC, flatpak: org.videolan.VLC}
   gimp: {name: GIMP, flatpak: org.gimp.GIMP}

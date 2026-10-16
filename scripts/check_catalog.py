@@ -52,6 +52,12 @@ def flathub(app_id: str) -> str | None:
     data = json.loads(body or b"null")
     if not isinstance(data, dict) or data.get("id") != app_id:
         return "Flathub has no appstream entry with this ID"
+    # A renamed app keeps its old ID's last build, on a runtime that no longer
+    # gets updates (Thunderbird moved from org.mozilla.Thunderbird).
+    status, body = fetch(f"https://flathub.org/api/v2/summary/{app_id}")
+    metadata = (json.loads(body or b"{}") if status == 200 else {}).get("metadata") or {}
+    if metadata.get("runtimeIsEol"):
+        return f"its runtime {metadata.get('runtime')} is end-of-life: the app has moved or stopped"
     return None
 
 
