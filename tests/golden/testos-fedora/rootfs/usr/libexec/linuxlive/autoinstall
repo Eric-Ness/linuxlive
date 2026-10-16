@@ -11,8 +11,10 @@ flag=/sys/firmware/qemu_fw_cfg/by_name/opt/linuxlive/autoinstall/raw
 [ -e "$flag" ] || exit 0
 # The first serial port: the 16550's on PCs, the PL011's on ARM (QEMU's virt machine).
 case $(uname -m) in aarch64) port=/dev/ttyAMA0 ;; *) port=/dev/ttyS0 ;; esac
-exec 3>"$port" || exit 0
-say() { printf '%s\n' "$*" >&3; }
+# Each line opens the port afresh (see bootcheck: a login prompt on the
+# console port ends handles opened before it).
+[ -w "$port" ] || exit 0
+say() { printf '%s\n' "$*" >"$port" 2>/dev/null || true; }
 
 value() { tr ';' '\n' <"$flag" | sed -n "s/^$1=//p" | head -n 1; }
 say LINUXLIVE_INSTALL_START

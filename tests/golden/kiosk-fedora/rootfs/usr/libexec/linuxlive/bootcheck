@@ -12,9 +12,12 @@ flag=/sys/firmware/qemu_fw_cfg/by_name/opt/linuxlive/bootcheck/raw
 [ -e "$flag" ] || exit 0
 # The first serial port: the 16550's on PCs, the PL011's on ARM (QEMU's virt machine).
 case $(uname -m) in aarch64) port=/dev/ttyAMA0 ;; *) port=/dev/ttyS0 ;; esac
-exec 3>"$port" || exit 0
+# Each line opens the port afresh: where the port is also the kernel's console
+# (ARM), systemd starts a login prompt on it, whose hangup ends any handle
+# opened before it.
+[ -w "$port" ] || exit 0
 
-say() { printf '%s\n' "$*" >&3; }
+say() { printf '%s\n' "$*" >"$port" 2>/dev/null || true; }
 fact() { say "LINUXLIVE_FACT $1=$2"; }
 
 say LINUXLIVE_BOOTCHECK_START
@@ -625,6 +628,8 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		if systemctl cat casper-md5check.service >/dev/null 2>&1; then
 			fact casper_md5check "$(casper_md5check)"
 		fi
+		# Every check after login is done; the test harness may stop the VM.
+		say LINUXLIVE_CHECKED
 		[ -n "$pid" ] || exit 0
 		# Then keep watching until the test harness stops the VM: Cinnamon has
 		# crashed a minute after login, after the look above. Its launcher then

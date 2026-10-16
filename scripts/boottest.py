@@ -402,6 +402,12 @@ def run(args) -> int:
                     result["screenshots"].append(name)
                 if i + 1 < args.screenshots:
                     time.sleep(args.screenshot_interval)
+            # The boot check's last look after login may still be running
+            # (emulated, it is much slower): give it time to finish.
+            checked_by = time.monotonic() + args.check_timeout * scale
+            while "LINUXLIVE_CHECKED" not in log.markers and time.monotonic() < checked_by and proc.poll() is None:
+                time.sleep(2)
+                log.poll()
         elif wanted not in log.markers and proc.poll() is None:
             # Not where we wanted to be: keep a picture of where the boot got stuck.
             if screenshot(qmp, workdir, out / "stuck.png"):
@@ -452,6 +458,7 @@ def main() -> int:
     parser.add_argument("--settle", type=int, default=45, help="seconds to wait before the first screenshot (KVM)")
     parser.add_argument("--screenshots", type=int, default=3)
     parser.add_argument("--screenshot-interval", type=int, default=30)
+    parser.add_argument("--check-timeout", type=int, default=120, help="seconds after the screenshots to wait for the boot check to finish (KVM)")
     parser.add_argument("--tcg-factor", type=int, default=5, help="multiply timeouts by this without KVM")
     parser.add_argument("--disk", help="qcow2 disk for the install and installed-* modes; a raw stick image for persist-*")
     parser.add_argument("--install-timeout", type=int, default=1800, help="seconds from the install's start to its end (KVM)")
