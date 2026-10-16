@@ -83,6 +83,9 @@ def firefox_policies(plan: Plan) -> dict | None:
     if ff.bookmarks:
         policies["Bookmarks"] = [{"Title": b.name, "URL": b.url, "Placement": "toolbar"} for b in ff.bookmarks]
         policies["DisplayBookmarksToolbar"] = "always"
+        # Without Firefox's own: on a new profile (every live session's) its
+        # default bookmarks are imported over whichever policy bookmark landed first.
+        policies["NoDefaultBookmarks"] = True
     policies["DontCheckDefaultBrowser"] = True
     return {"policies": policies}
 

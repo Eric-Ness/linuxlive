@@ -54,6 +54,7 @@
           "StartPage": "homepage",
           "URL": "https://linuxlive.com/"
         },
+        "NoDefaultBookmarks": true,
         "OverrideFirstRunPage": "",
         "OverridePostUpdatePage": ""
       }

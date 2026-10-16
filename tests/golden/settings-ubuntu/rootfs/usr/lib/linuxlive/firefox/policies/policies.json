@@ -15,6 +15,7 @@
       }
     ],
     "DisplayBookmarksToolbar": "always",
+    "NoDefaultBookmarks": true,
     "DontCheckDefaultBrowser": true
   }
 }

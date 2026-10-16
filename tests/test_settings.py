@@ -178,6 +178,7 @@ def test_firefox_policies(workspace):
     assert policies["Homepage"] == {"URL": "https://example.org/", "StartPage": "homepage", "Locked": False}
     assert policies["OverrideFirstRunPage"] == ""
     assert policies["Bookmarks"] == [{"Title": 'Schule "A"', "URL": "https://example.org/a", "Placement": "toolbar"}]
+    assert policies["NoDefaultBookmarks"] is True
     tmpfiles = text(ctx, "rootfs/usr/lib/tmpfiles.d/linuxlive-firefox.conf")
     assert "L+ /var/lib/flatpak/extension/org.mozilla.firefox.systemconfig/x86_64/stable - - - - /usr/lib/linuxlive/firefox\n" in tmpfiles
     # Only bookmarks: no home page policy.

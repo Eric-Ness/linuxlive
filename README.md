@@ -64,7 +64,9 @@ first console as the user `linuxlive-kiosk`; the boot menu's Install entry
 still starts the desktop, so the installer works. Hidden menu entries stay
 installed: on Ubuntu the package's file is diverted, so upgrades keep it
 hidden. Firefox's policies go where Flathub's Firefox reads them
-(`org.mozilla.firefox.systemconfig`).
+(`org.mozilla.firefox.systemconfig`); with bookmarks, Firefox's own default
+bookmarks are left out, since on a new profile (every live session's) their
+import can replace the first of the spec's.
 
 Extras run before linuxlive's own last build step (finalize), so branding,
 the installer and the boot checks still come last; CI checks every extra in
