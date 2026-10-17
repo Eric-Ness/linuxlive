@@ -315,6 +315,40 @@ class SerialLog:
                 self.markers.append(line.split()[0])
 
 
+class Presence:
+    """Moves the pointer a little every 30 seconds, as a user at the screen
+    would. Emulated, the desktop takes so long to come up that its idle timers
+    (KDE locks the screen after five minutes, then turns it off) run out
+    before the screenshots; under KVM it does nothing."""
+
+    def __init__(self, qmp: Qmp, active: bool) -> None:
+        self.qmp = qmp
+        self.active = active
+        self.last = 0.0
+        self.step = 0
+
+    def tick(self) -> None:
+        if not self.active or time.monotonic() - self.last < 30:
+            return
+        self.last = time.monotonic()
+        self.step ^= 1
+        # Middle of the screen (the tablet's range is 0-32767), a few pixels apart.
+        x = 16384 + 40 * self.step
+        try:
+            self.qmp.command("input-send-event", events=[
+                {"type": "abs", "data": {"axis": "x", "value": x}},
+                {"type": "abs", "data": {"axis": "y", "value": 16384}},
+            ])
+        except Exception as exc:  # a missed nudge must not hide the boot result
+            print(f"[boottest] pointer nudge failed: {exc}", flush=True)
+
+    def sleep(self, seconds: float) -> None:
+        end = time.monotonic() + seconds
+        while (left := end - time.monotonic()) > 0:
+            self.tick()
+            time.sleep(min(left, 5))
+
+
 def screenshot(qmp: Qmp, workdir: Path, out: Path) -> bool:
     ppm = workdir / "screen.ppm"
     try:
@@ -374,8 +408,11 @@ def run(args) -> int:
             result["error"] = f"could not connect to QEMU's monitor: {exc}"
             raise
         deadline = started + boot_timeout
+        presence = Presence(qmp, active=not kvm)
         while True:
             log.poll()
+            if "LINUXLIVE_BOOTED" in log.markers:
+                presence.tick()
             now = time.monotonic()
             for marker in log.markers:
                 result["timings"].setdefault(marker, round(now - started, 1))
@@ -408,13 +445,13 @@ def run(args) -> int:
         elif args.session and "LINUXLIVE_SESSION_READY" in log.markers:
             result["outcome"] = "session"
             print(f"[boottest] session ready; waiting {settle}s for the desktop to settle", flush=True)
-            time.sleep(settle)
+            presence.sleep(settle)
             for i in range(args.screenshots):
                 name = f"screenshot-{i + 1}.png"
                 if screenshot(qmp, workdir, out / name):
                     result["screenshots"].append(name)
                 if i + 1 < args.screenshots:
-                    time.sleep(args.screenshot_interval)
+                    presence.sleep(args.screenshot_interval)
             # The boot check's last look after login may still be running
             # (emulated, it is much slower): give it time to finish.
             checked_by = time.monotonic() + args.check_timeout * scale

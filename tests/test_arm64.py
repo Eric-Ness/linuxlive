@@ -180,3 +180,30 @@ def test_emulated_guests_get_more_room(monkeypatch):
     monkeypatch.setattr(boottest.os, "cpu_count", lambda: 1)
     assert boottest.guest_size(None, None, kvm=False) == (8192, 2)
     assert boottest.guest_size(3072, 1, kvm=False) == (3072, 1)
+
+
+def test_emulated_runs_keep_the_desktop_awake(monkeypatch):
+    import scripts.boottest as boottest
+
+    class FakeQmp:
+        def __init__(self):
+            self.sent = []
+
+        def command(self, name, **arguments):
+            self.sent.append((name, arguments))
+            return {}
+
+    clock = [1000.0]
+    monkeypatch.setattr(boottest.time, "monotonic", lambda: clock[0])
+    qmp = FakeQmp()
+    kvm = boottest.Presence(qmp, active=False)
+    kvm.tick()
+    assert qmp.sent == []
+    tcg = boottest.Presence(qmp, active=True)
+    tcg.tick()
+    tcg.tick()  # within 30 seconds: no second move
+    clock[0] += 31
+    tcg.tick()
+    assert [name for name, _ in qmp.sent] == ["input-send-event", "input-send-event"]
+    xs = [args["events"][0]["data"]["value"] for _, args in qmp.sent]
+    assert xs[0] != xs[1] and all(0 <= x <= 32767 for x in xs)
