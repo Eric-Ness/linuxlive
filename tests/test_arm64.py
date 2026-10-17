@@ -170,3 +170,13 @@ def test_the_flathub_check_uses_each_arch(workspace, monkeypatch, capsys):
     spec = write_spec(workspace, spec_data(flathub=["com.example.PcOnly"], arches=["amd64", "arm64"]))
     assert cli.main(["validate", "--online", str(spec)]) == 2
     assert "com.example.PcOnly is not built for aarch64 on Flathub (only x86_64)" in capsys.readouterr().err
+
+
+def test_emulated_guests_get_more_room(monkeypatch):
+    import scripts.boottest as boottest
+    monkeypatch.setattr(boottest.os, "cpu_count", lambda: 4)
+    assert boottest.guest_size(None, None, kvm=True) == (4096, 2)
+    assert boottest.guest_size(None, None, kvm=False) == (8192, 4)
+    monkeypatch.setattr(boottest.os, "cpu_count", lambda: 1)
+    assert boottest.guest_size(None, None, kvm=False) == (8192, 2)
+    assert boottest.guest_size(3072, 1, kvm=False) == (3072, 1)

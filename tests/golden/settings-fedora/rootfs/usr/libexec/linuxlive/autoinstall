@@ -26,9 +26,22 @@ timezone=$(value timezone)
 autologin=--autologin
 if [ "$(value autologin)" = spec ]; then autologin=""; fi
 # shellcheck disable=SC2046,SC2086 # $image and $autologin are one word or none
-if /usr/libexec/linuxlive/install-to-disk --disk "$(value disk)" --confirm "$(value disk)" ${image:+--image "$image"} \
+/usr/libexec/linuxlive/install-to-disk --disk "$(value disk)" --confirm "$(value disk)" ${image:+--image "$image"} \
 	--user "$(value user)" --fullname "linuxlive test" --password-file "$pw" \
-	--hostname "$(value hostname)" ${timezone:+--timezone "$timezone"} $autologin >/tmp/linuxlive-install.log 2>&1; then
+	--hostname "$(value hostname)" ${timezone:+--timezone "$timezone"} $autologin >/tmp/linuxlive-install.log 2>&1 &
+job=$!
+# Where the installer has got to, every five minutes when it has moved on: an
+# emulated install (ARM in CI) takes hours, and a slow one is not a stuck one.
+ticks=0 last=""
+while kill -0 "$job" 2>/dev/null; do
+	sleep 5
+	ticks=$((ticks + 1))
+	[ $((ticks % 60)) -eq 0 ] || continue
+	now=$(grep '^PROGRESS ' /tmp/linuxlive-install.log 2>/dev/null | tail -n 1 | cut -c10-140)
+	[ "$now" = "$last" ] || say "LINUXLIVE_FACT install_progress=$((ticks * 5))s $now"
+	last=$now
+done
+if wait "$job"; then
 	say LINUXLIVE_INSTALLED
 else
 	say "LINUXLIVE_FACT install_error=$(grep '^ERROR ' /tmp/linuxlive-install.log | tail -n 1 | cut -c7-)"

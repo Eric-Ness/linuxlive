@@ -227,12 +227,21 @@ session_errors() {
 		journalctl -b --no-pager -o cat -t systemd-coredump 2>/dev/null | head -n 20
 	} | grep -iE 'error|critical|fatal|segfault|crash|traceback|assert|dumped core|signal|memory|oom|#[0-9]+ ' | tail -n 20 |
 		while IFS= read -r line; do fact session_error "$line"; done
+	session_end
 	# Ubuntu's apport keeps crashes in /var/crash rather than systemd-coredump.
 	for report in /var/crash/*.crash; do
 		[ -f "$report" ] || continue
 		grep -aE '^(ExecutablePath|Signal|Title|ProcStatus):' "$report" 2>/dev/null | head -n 4 |
 			while IFS= read -r line; do fact crash_report "$(basename "$report"): $line"; done
 	done
+}
+
+# Who ended a session: systemd-oomd's kills (memory pressure), and logind's and
+# the display manager's own lines, each with its seconds since boot.
+session_end() {
+	journalctl -b --no-pager -o short-monotonic -u systemd-oomd -u systemd-logind -u gdm -u sddm 2>/dev/null |
+		grep -iE 'kill|oom|pressure|removed session|logged out|fail|error' | tail -n 12 |
+		while IFS= read -r line; do fact session_end "$line"; done
 }
 
 failed_units() {
@@ -645,6 +654,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 						timeout 120 flatpak run -v --command=true "$app" 2>&1 | grep -viE '^F: (Running|Opening|Mounting)' | tail -n 8 |
 						while IFS= read -r line; do fact flatpak_run_debug "$app: $line"; done
 					fact flatpak_run_debug "$app: $(ls -ld "/run/user/$uid" "/run/user/$uid/.flatpak" 2>&1 | tr '\n' ' ')"
+					session_end
 				fi
 			done
 		fi

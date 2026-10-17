@@ -93,6 +93,17 @@ def kvm_usable() -> bool:
     return os.path.exists("/dev/kvm") and os.access("/dev/kvm", os.R_OK | os.W_OK)
 
 
+def guest_size(memory: int | None, cpus: int | None, kvm: bool) -> tuple[int, int]:
+    """The guest's RAM (MiB) and CPUs, when not given: 4 GB and 2 CPUs under KVM.
+    Emulated (TCG, multi-threaded), up to 4 of the host's CPUs and 8 GB: every
+    page read back from the squashfs is decompressed by emulated code, which
+    the kernel counts as memory stall: with 4 GB, systemd-oomd's pressure limit
+    can end the user's whole session while apps start."""
+    if kvm:
+        return memory or 4096, cpus or 2
+    return memory or 8192, cpus or max(2, min(4, os.cpu_count() or 2))
+
+
 def qemu_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, memory: int, cpus: int, kvm: bool,
                  disk: Path | None = None, autoinstall_image: str = "", autoinstall_autologin: str = "on", arch: str = "amd64") -> list[str]:
     firmware, media = MODES[mode]
@@ -329,7 +340,8 @@ def run(args) -> int:
     boot_timeout = args.boot_timeout * scale
     session_timeout = args.session_timeout * scale
     settle = args.settle * scale
-    cmd = qemu_command(Path(args.iso).resolve(), args.mode, workdir, serial, qmp_path, args.memory, args.cpus, kvm,
+    memory, cpus = guest_size(args.memory, args.cpus, kvm)
+    cmd = qemu_command(Path(args.iso).resolve(), args.mode, workdir, serial, qmp_path, memory, cpus, kvm,
                        Path(args.disk).resolve() if args.disk else None, args.autoinstall_image or "", args.autoinstall_autologin, args.arch)
     print(f"[boottest] {args.mode}: {'KVM' if kvm else 'TCG (no KVM)'}; boot timeout {boot_timeout}s", flush=True)
     print("[boottest] " + " ".join(cmd), flush=True)
@@ -452,8 +464,8 @@ def main() -> int:
     parser.add_argument("--session", action="store_true", help="wait for the desktop session and take screenshots")
     parser.add_argument("--accel", choices=("auto", "kvm", "tcg"), default="auto")
     parser.add_argument("--arch", choices=("amd64", "arm64"), default="amd64", help="the ISO's CPU (arm64: QEMU's virt machine)")
-    parser.add_argument("--memory", type=int, default=4096, help="guest RAM in MiB")
-    parser.add_argument("--cpus", type=int, default=2)
+    parser.add_argument("--memory", type=int, help="guest RAM in MiB (default 4096; 8192 emulated)")
+    parser.add_argument("--cpus", type=int, help="guest CPUs (default 2; emulated, up to 4 of the host's)")
     parser.add_argument("--boot-timeout", type=int, default=480, help="seconds until the boot check starts (KVM)")
     parser.add_argument("--session-timeout", type=int, default=600, help="seconds from boot check to desktop (KVM)")
     parser.add_argument("--settle", type=int, default=45, help="seconds to wait before the first screenshot (KVM)")
