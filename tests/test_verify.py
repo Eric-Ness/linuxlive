@@ -82,6 +82,7 @@ def boot_result(mode: str, base: str, *, session: bool) -> dict:
         if base == "ubuntu":
             facts["casper_md5check"] = ["pass"]
             facts["installer_launcher"] = ["trusted=true mode=755"]
+            facts["desktop_icons"] = ["running"]
         if base == "fedora":  # TestOS on Fedora is KDE
             facts["kde_launcher_icon"] = ["linuxlive-logo"]
             facts["plasma_welcome_installer"] = ["none"]
@@ -274,6 +275,11 @@ BREAKS = {
     "the installer's desktop launcher is untrusted": (
         *_set_fact(SESSION_MODE, "installer_launcher", ["trusted=unset mode=755"]),
         "a double-click on the installer's desktop launcher starts it (installer_launcher 'trusted=unset mode=755')",
+    ),
+    "the desktop's icons are not drawn": (
+        f"modes/{SESSION_MODE}/result.json",
+        lambda d: d["facts"].update(desktop_icons=["not running (extension ACTIVE)"], desktop_icons_log=["ding: Gdk-CRITICAL: no display"]),
+        "the desktop's icons are drawn (DING running; desktop_icons 'not running (extension ACTIVE)'); log: ding: Gdk-CRITICAL: no display",
     ),
     "the installer's desktop launcher is not executable": (
         *_set_fact(SESSION_MODE, "installer_launcher", ["trusted=true mode=644"]),

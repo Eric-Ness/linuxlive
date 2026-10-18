@@ -348,6 +348,13 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
             # trusted and executable; otherwise a double-click says "untrusted".
             launcher = _fact(result, "installer_launcher") or ""
             c.expect(launcher.startswith("trusted=true mode=7"), f"a double-click on the installer's desktop launcher starts it (installer_launcher {launcher!r})")
+            # The icons themselves, the launcher's among them, are drawn by DING.
+            icons = _fact(result, "desktop_icons")
+            logs = _facts(result, "desktop_icons_log")
+            c.expect(
+                icons == "running",
+                f"the desktop's icons are drawn (DING running; desktop_icons {icons!r})" + (f"; log: {' | '.join(logs)}" if logs else ""),
+            )
         # The installer's window lists disks as the live user, through sudo -n; the
         # boot medium itself is always among them.
         listed = _fact(result, "installer_disks") or ""

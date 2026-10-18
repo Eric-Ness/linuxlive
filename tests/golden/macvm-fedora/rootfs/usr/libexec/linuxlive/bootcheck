@@ -667,6 +667,26 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 				gio info -a metadata::trusted "$launcher" 2>/dev/null | sed -n 's/^ *metadata::trusted: *//p')
 			fact installer_launcher "trusted=${trusted:-unset} mode=$(stat -c %a "$launcher")"
 		fi
+		# Ubuntu's desktop icons (the installer's launcher among them) are drawn
+		# by DING, a separate program the extension starts. Up to three minutes
+		# for it to come up; if it never does, the extension's state and its log.
+		if [ "$shell" = gnome-shell ] && [ -d /usr/share/gnome-shell/extensions/ding@rastersoft.com ]; then
+			tries=0
+			while [ "$tries" -lt 90 ] && ! pgrep -u "$user" -f 'ding@rastersoft.com/app/ding.js' >/dev/null 2>&1; do
+				tries=$((tries + 1))
+				sleep 2
+			done
+			if pgrep -u "$user" -f 'ding@rastersoft.com/app/ding.js' >/dev/null 2>&1; then
+				fact desktop_icons running
+			else
+				uid=$(id -u "$user")
+				state=$(runuser -u "$user" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" XDG_RUNTIME_DIR="/run/user/$uid" \
+					gnome-extensions info ding@rastersoft.com 2>&1 | sed -n 's/^ *State: *//p')
+				fact desktop_icons "not running (extension ${state:-unknown})"
+				journalctl -b --no-pager -o cat "_UID=$uid" 2>/dev/null | grep -iE '\<ding\>|rastersoft|desktop.?icons' | tail -n 12 |
+					while IFS= read -r line; do fact desktop_icons_log "$line"; done
+			fi
+		fi
 		fact update_notifiers "$(update_notifiers "$user")"
 		fact gnome_software_updates "$(gnome_software_updates "$user" "$pid")"
 		if [ "$shell" = plasmashell ]; then
