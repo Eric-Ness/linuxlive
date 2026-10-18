@@ -278,8 +278,8 @@ BREAKS = {
     ),
     "the desktop's icons are not drawn": (
         f"modes/{SESSION_MODE}/result.json",
-        lambda d: d["facts"].update(desktop_icons=["not running (extension ACTIVE)"], desktop_icons_log=["ding: Gdk-CRITICAL: no display"]),
-        "the desktop's icons are drawn (DING running; desktop_icons 'not running (extension ACTIVE)'); log: ding: Gdk-CRITICAL: no display",
+        lambda d: d["facts"].update(desktop_icons=["never up for 20 s (extension ACTIVE)"], desktop_icons_log=["ding: Gdk-CRITICAL: no display"]),
+        "the desktop's icons are drawn (DING running; desktop_icons 'never up for 20 s (extension ACTIVE)'); log: ding: Gdk-CRITICAL: no display",
     ),
     "the installer's desktop launcher is not executable": (
         *_set_fact(SESSION_MODE, "installer_launcher", ["trusted=true mode=644"]),

@@ -117,6 +117,22 @@ debrand_ubuntu() {
 	log "/etc/issue: $LL_NAME $LL_VERSION"
 }
 
+# Ubuntu's desktop icons come from DING, a program its extension starts. On
+# Wayland the extension kills it, and starts it again, when its window has not
+# shown within three seconds: on a slow machine (or an emulated ARM one) it
+# never does, so the desktop has no icons, the installer's among them. Allow 30.
+# (A package update brings back upstream's three seconds on installed systems.)
+relax_ding_timeout() {
+	ding=/usr/share/gnome-shell/extensions/ding@rastersoft.com/extension.js
+	[ -f "$ding" ] || return 0
+	if grep -q '_launch_timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000,' "$ding"; then
+		sed -i 's/\(_launch_timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, \)3000,/\130000,/' "$ding"
+		log "desktop icons: DING may take 30 s to show its window, not 3"
+	else
+		log "desktop icons: DING's launch timeout not found; left as it is"
+	fi
+}
+
 compile_schemas() {
 	log_file=$(mktemp)
 	if ! glib-compile-schemas /usr/share/glib-2.0/schemas 2>"$log_file"; then
@@ -307,6 +323,7 @@ rewrite_os_release
 install_plymouth_theme
 if [ "$LL_BASE" = ubuntu ]; then
 	debrand_ubuntu
+	relax_ding_timeout
 fi
 refresh_icon_cache
 apply_settings

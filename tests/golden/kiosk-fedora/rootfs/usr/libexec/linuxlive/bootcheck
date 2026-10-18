@@ -668,21 +668,29 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 			fact installer_launcher "trusted=${trusted:-unset} mode=$(stat -c %a "$launcher")"
 		fi
 		# Ubuntu's desktop icons (the installer's launcher among them) are drawn
-		# by DING, a separate program the extension starts. Up to three minutes
-		# for it to come up; if it never does, the extension's state and its log.
+		# by DING, a separate program the extension starts, and kills and starts
+		# again when its window is late. So: one DING that has stayed up for 20
+		# seconds, within three minutes; if none does, the extension's state and
+		# its log. And how many times it was started.
 		if [ "$shell" = gnome-shell ] && [ -d /usr/share/gnome-shell/extensions/ding@rastersoft.com ]; then
-			tries=0
-			while [ "$tries" -lt 90 ] && ! pgrep -u "$user" -f 'ding@rastersoft.com/app/ding.js' >/dev/null 2>&1; do
+			tries=0 settled=""
+			while [ "$tries" -lt 90 ]; do
+				ding=$(pgrep -u "$user" -f 'ding@rastersoft.com/app/ding.js' 2>/dev/null | head -n 1)
+				if [ -n "$ding" ] && [ "$(ps -o etimes= -p "$ding" 2>/dev/null | tr -d ' ')" -ge 20 ] 2>/dev/null; then
+					settled=1
+					break
+				fi
 				tries=$((tries + 1))
 				sleep 2
 			done
-			if pgrep -u "$user" -f 'ding@rastersoft.com/app/ding.js' >/dev/null 2>&1; then
+			uid=$(id -u "$user")
+			fact desktop_icons_launches "$(journalctl -b --no-pager -o cat "_UID=$uid" 2>/dev/null | grep -c 'Launching DING process')"
+			if [ -n "$settled" ]; then
 				fact desktop_icons running
 			else
-				uid=$(id -u "$user")
 				state=$(runuser -u "$user" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" XDG_RUNTIME_DIR="/run/user/$uid" \
 					gnome-extensions info ding@rastersoft.com 2>&1 | sed -n 's/^ *State: *//p')
-				fact desktop_icons "not running (extension ${state:-unknown})"
+				fact desktop_icons "never up for 20 s (extension ${state:-unknown})"
 				journalctl -b --no-pager -o cat "_UID=$uid" 2>/dev/null | grep -iE '\<ding\>|rastersoft|desktop.?icons' | tail -n 12 |
 					while IFS= read -r line; do fact desktop_icons_log "$line"; done
 			fi
