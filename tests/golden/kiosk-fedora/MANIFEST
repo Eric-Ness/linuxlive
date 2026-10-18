@@ -22,6 +22,7 @@
 0644 259bc6bb425467d0e9c578779568df01a0e861b8d11cc0ca7d7cfa80eea2ee8e rootfs/usr/lib/systemd/system/mcelog.service.d/linuxlive-vm.conf
 0644 f70ee91ae2c4b5ab1c9c6d836544556e308773ecc6640be7d8735df36b73a4af rootfs/usr/lib/systemd/system/plasmalogin.service.d/linuxlive-kiosk.conf
 0644 f70ee91ae2c4b5ab1c9c6d836544556e308773ecc6640be7d8735df36b73a4af rootfs/usr/lib/systemd/system/sddm.service.d/linuxlive-kiosk.conf
+0644 0dbc8b716a387e094ed5a255b7a80d43e1d2b63b94de0c758f3a4708c728a477 rootfs/usr/lib/systemd/system/tuned-ppd.service.d/linuxlive-slow.conf
 0644 129f3fec596b497cae5fd33df33f20b4425d141c50dee755166a8b628a8928e2 rootfs/usr/lib/systemd/system/tuned.service.d/linuxlive-slow.conf
 0644 90f8a38dac446c48bf499072a92ace5eeac71e484abd5bdc6895fd21d44daee4 rootfs/usr/lib/sysusers.d/linuxlive-kiosk.conf
 0644 9e70deccf7ae0ca926936344d2283b43e3a65853bda42600ac8fcb8b6a9c3177 rootfs/usr/lib/tmpfiles.d/linuxlive-kiosk.conf

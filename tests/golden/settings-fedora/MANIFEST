@@ -18,6 +18,7 @@
 0644 3c2446539d44133cf437a1b7df32a59c9a3d161169cb6054c12da9fcb1a85e97 rootfs/usr/lib/systemd/system/linuxlive-firstboot.service
 0644 ebabe8e3b85f08ead0b4e2efd865f57b234cc2dfa34b0ae3d8bfaa704ce0c8e6 rootfs/usr/lib/systemd/system/linuxlive-live.service
 0644 259bc6bb425467d0e9c578779568df01a0e861b8d11cc0ca7d7cfa80eea2ee8e rootfs/usr/lib/systemd/system/mcelog.service.d/linuxlive-vm.conf
+0644 0dbc8b716a387e094ed5a255b7a80d43e1d2b63b94de0c758f3a4708c728a477 rootfs/usr/lib/systemd/system/tuned-ppd.service.d/linuxlive-slow.conf
 0644 129f3fec596b497cae5fd33df33f20b4425d141c50dee755166a8b628a8928e2 rootfs/usr/lib/systemd/system/tuned.service.d/linuxlive-slow.conf
 0644 d5c3b0f78d47488591c08552b69719c7daad27469ad70815c262b075e5f504e4 rootfs/usr/lib/tmpfiles.d/linuxlive-firefox.conf
 0644 7f88db79d65b990f32b82ac9daea91d70b7f2cea3dfd4f91529503915eb36dcc rootfs/usr/lib/tmpfiles.d/linuxlive-livesys.conf
