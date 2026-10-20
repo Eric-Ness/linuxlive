@@ -231,6 +231,39 @@ session_errors() {
 	crash_reports
 }
 
+# Where a crash's faulting instruction and address were, from the kernel's
+# segfault lines and the report's memory map (its ProcMaps): in a library, in
+# anonymous memory (code made at run time, such as llvmpipe's shaders), or in
+# no mapping at all. Only the segfault whose instruction is in this process's
+# map is its own. (Under 2^53, so awk's doubles hold the addresses exactly.)
+crash_maps() {
+	journalctl -k -b --no-pager -o cat 2>/dev/null |
+		sed -n 's/.*segfault at \([0-9a-f]*\) ip \([0-9a-f]*\) .*/\1 \2/p' |
+		while read -r addr ip; do
+			sed -n '/^ProcMaps:/,/^[^ ]/{/^ /p;}' "$1" 2>/dev/null | awk -v addr="$addr" -v ip="$ip" '
+				function hex(s,   i, n) {
+					n = 0
+					for (i = 1; i <= length(s); i++) n = n * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
+					return n
+				}
+				BEGIN { a = hex(addr); p = hex(ip) }
+				{
+					split($1, range, "-"); lo = hex(range[1]); hi = hex(range[2])
+					line = $0; gsub(/ +/, " ", line); sub(/^ /, "", line); sub(/ $/, "", line)
+					if (p >= lo && p < hi) at_ip = line
+					if (a >= lo && a < hi) at_addr = line
+					if (hi <= a) below = line
+					if (lo > a && above == "") above = line
+				}
+				END {
+					if (at_ip == "") exit
+					print "ip " ip " in " at_ip
+					if (at_addr != "") print "address " addr " in " at_addr
+					else print "address " addr " in no mapping (after " below "; before " above ")"
+				}'
+		done
+}
+
 # Programs that crashed, each reported once: Ubuntu's apport keeps a report in
 # /var/crash (and tells the user "... has experienced an internal error");
 # elsewhere systemd-coredump logs each dump.
@@ -246,6 +279,7 @@ crash_reports() {
 		# (the field's lines start with a space) names the exception.
 		exception=$(sed -n '/^Traceback:/,/^[^ ]/{/^ /p;}' "$report" 2>/dev/null | tail -n 1)
 		[ -z "$exception" ] || fact crash_report "$(basename "$report"): Exception: ${exception# }"
+		crash_maps "$report" | while IFS= read -r line; do fact crash_report "$(basename "$report"): $line"; done
 	done
 	dumps=$(journalctl -b --no-pager -o cat -t systemd-coredump 2>/dev/null | grep -E '^Process [0-9]+ \(.*\) of user [0-9]+ ')
 	while IFS= read -r line; do
