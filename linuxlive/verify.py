@@ -211,6 +211,10 @@ def _check_live_session(c: _Collector, plan: Plan, result: dict) -> None:
             installer is not None and not installer.startswith("missing:"),
             f"Plasma Welcome offers installer {installer!r}, which must exist or be 'none'",
         )
+    if plan.desktop.id == "cinnamon":
+        # The panel's printers applet runs them; without lpstat its helper dies at every login.
+        missing = _fact(result, "printer_commands_missing")
+        c.expect(missing == "none", f"programs Cinnamon's printers applet runs, missing: {missing!r}, expected 'none'")
     if plan.base.id == "ubuntu":
         # The last report wins; "running" means it had not finished when the VM stopped.
         verdicts = _facts(result, "casper_md5check")
