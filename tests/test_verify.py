@@ -155,11 +155,29 @@ def edit_json(path: Path, change) -> None:
     path.write_text(json.dumps(data))
 
 
+def test_another_programs_crash_is_a_warning(tmp_path):
+    results = make_results(tmp_path / "r")
+    report = "_usr_share_cinnamon_applets_printers@cinnamon.org_lpstat-a.py.999.crash"
+    edit_json(results / "modes" / SESSION_MODE / "result.json", lambda d: d["facts"].update(crash_report=[
+        f"{report}: ExecutablePath: /usr/share/cinnamon/applets/printers@cinnamon.org/lpstat-a.py",
+        f"{report}: Title: lpstat-a.py crashed with ModuleNotFoundError",
+        "systemd-coredump: Process 2051 (tracker-miner-f) of user 999 dumped core.",
+    ]))
+    outcomes = verify_results(load(), results, expect_commit=COMMIT)
+    assert failures(outcomes) == []
+    warnings = [o.detail for o in outcomes if o.warning]
+    assert warnings == [
+        f"other programs crashed in the live session: {report}: ExecutablePath: /usr/share/cinnamon/applets/printers@cinnamon.org/lpstat-a.py"
+        f" | {report}: Title: lpstat-a.py crashed with ModuleNotFoundError"
+        " | systemd-coredump: Process 2051 (tracker-miner-f) of user 999 dumped core."
+    ]
+
+
 @pytest.mark.parametrize("base", ["ubuntu", "fedora"])
 def test_good_results_pass_every_check(tmp_path, base):
     results = make_results(tmp_path / "r", base)
     outcomes = verify_results(load(base), results, expect_commit=COMMIT)
-    assert failures(outcomes) == []
+    assert failures(outcomes) == [] and not [o for o in outcomes if o.warning]
     # Every boot mode, every app and the screenshot were actually looked at.
     details = " ".join(o.detail for o in outcomes)
     for mode in BOOT_MODES:
@@ -300,13 +318,17 @@ BREAKS = {
         lambda d: d["facts"].update(shell_restarted=["pid 1830 at login, 2711 30 s later"], session_error=["gnome-shell[1830]: segfault at 0"]),
         "desktop shell is still the one that started at login (restarted: pid 1830 at login, 2711 30 s later); session errors: gnome-shell[1830]",
     ),
-    "a program crashed": (
+    "the shell left a crash report": (
         *_set_fact(SESSION_MODE, "crash_report", [
             "_usr_bin_gnome-shell.999.crash: ExecutablePath: /usr/bin/gnome-shell",
             "_usr_bin_gnome-shell.999.crash: Signal: 11",
         ]),
-        "nothing crashed in the live session (crash reports: _usr_bin_gnome-shell.999.crash: ExecutablePath: /usr/bin/gnome-shell"
+        "desktop shell left no crash report (crash reports: _usr_bin_gnome-shell.999.crash: ExecutablePath: /usr/bin/gnome-shell"
         " | _usr_bin_gnome-shell.999.crash: Signal: 11)",
+    ),
+    "the shell dumped core": (
+        *_set_fact(SESSION_MODE, "crash_report", ["systemd-coredump: Process 1830 (gnome-shell) of user 999 dumped core."]),
+        "desktop shell left no crash report (crash reports: systemd-coredump: Process 1830 (gnome-shell) of user 999 dumped core.)",
     ),
     "shell not watched": (
         *_set_fact(SESSION_MODE, "shell_watch", []),

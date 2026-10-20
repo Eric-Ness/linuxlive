@@ -61,7 +61,7 @@ def _verify(args) -> int:
     checks = [c.strip() for c in args.check.split(",") if c.strip()]
     outcomes = verify_results(spec, Path(args.results), checks, expect_commit=args.expect_commit)
     for o in outcomes:
-        print(f"{'PASS' if o.ok else 'FAIL'} {o.check}: {o.detail}")
+        print(f"{'FAIL' if not o.ok else 'WARN' if o.warning else 'PASS'} {o.check}: {o.detail}")
     failed = [o for o in outcomes if not o.ok]
     if failed:
         print(f"VERIFY FAILED: {len(failed)} of {len(outcomes)} checks failed")
