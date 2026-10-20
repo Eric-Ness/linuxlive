@@ -326,6 +326,37 @@ BREAKS = {
         *_set_fact(SESSION_MODE, "shell_watch", []),
         "desktop shell kept running until the test ended (watched: None)",
     ),
+    # The installed desktop's shell and crashes, as the live session's (spike 39473084794: Cinnamon's fallback mode).
+    "installed desktop's shell crashed after starting": (
+        "modes/installed-uefi-sb/result.json",
+        lambda d: d["facts"].update(shell_after_settle=["none"], session_error=["llvmpipe-0[1410]: segfault at 708b69a3966c ip 0000708c1403e4ca"]),
+        "installed-uefi-sb: desktop shell still running 30 s after login: 'none', expected 'gnome-shell'; session errors: llvmpipe-0[1410]: segfault",
+    ),
+    "installed desktop's shell crashed after the settle check": (
+        "modes/installed-uefi-sb/result.json",
+        lambda d: d["facts"].update(shell_crashed=["31"], session_error=["llvmpipe-1[1405]: segfault at 79098fe623bc ip 0000790af40db3b9"]),
+        "installed-uefi-sb: desktop shell kept running until the test ended (watched: 'gnome-shell', crashed 31 s after login); session errors: llvmpipe-1[1405]",
+    ),
+    "installed desktop's shell crashed and came back": (
+        *_set_fact("installed-uefi-sb", "shell_restarted", ["pid 1402 at login, 2311 30 s later"]),
+        "installed-uefi-sb: desktop shell is still the one that started at login (restarted: pid 1402 at login, 2311 30 s later)",
+    ),
+    "installed desktop's shell not watched": (
+        *_set_fact("installed-uefi-sb", "shell_watch", []),
+        "installed-uefi-sb: desktop shell kept running until the test ended (watched: None)",
+    ),
+    "the installed desktop's shell left a crash report": (
+        *_set_fact("installed-uefi-sb", "crash_report", [
+            "_usr_bin_cinnamon.1000.crash: ExecutablePath: /usr/bin/cinnamon",
+            "_usr_bin_cinnamon.1000.crash: Signal: 11",
+        ]),
+        "installed-uefi-sb: nothing crashed on the installed desktop (crash reports: _usr_bin_cinnamon.1000.crash: ExecutablePath: /usr/bin/cinnamon"
+        " | _usr_bin_cinnamon.1000.crash: Signal: 11)",
+    ),
+    "another program dumped core on the installed desktop": (
+        *_set_fact("installed-uefi-sb", "crash_report", ["systemd-coredump: Process 2051 (tracker-miner-f) of user 1000 dumped core."]),
+        "installed-uefi-sb: nothing crashed on the installed desktop (crash reports: systemd-coredump: Process 2051 (tracker-miner-f) of user 1000 dumped core.)",
+    ),
     "Ubuntu logo on the dock": (*_set_fact(SESSION_MODE, "dock_show_apps_icon", ["ubuntu"]), "dock's Show Apps icon is 'ubuntu'"),
     "dock icon not reported": (*_set_fact(SESSION_MODE, "dock_show_apps_icon", []), "dock's Show Apps icon is None"),
     "/etc/issue names Ubuntu": (*_set_fact(SESSION_MODE, "issue", ["Ubuntu 26.04 LTS \\n \\l"]), "/etc/issue begins 'Ubuntu 26.04 LTS"),
