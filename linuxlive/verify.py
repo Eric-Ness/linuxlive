@@ -377,6 +377,17 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
         + ")"
         + (f"; session errors: {' | '.join(errors)}" if errors and crashed is not None else ""),
     )
+    # One that crashed and came back (the user logged in again) is running too, as another process.
+    restarted = _fact(result, "shell_restarted")
+    c.expect(
+        restarted is None,
+        "desktop shell is still the one that started at login"
+        + (f" (restarted: {restarted})" if restarted else "")
+        + (f"; session errors: {' | '.join(errors)}" if errors and restarted else ""),
+    )
+    # Ubuntu tells the user about each one ("... has experienced an internal error").
+    crashes = _facts(result, "crash_report")
+    c.expect(not crashes, "nothing crashed in the live session" + (f" (crash reports: {' | '.join(crashes)})" if crashes else ""))
     c.expect(
         _fact(result, "plymouth_theme") == "linuxlive",
         f"Plymouth theme is {_fact(result, 'plymouth_theme')!r}, expected 'linuxlive'",

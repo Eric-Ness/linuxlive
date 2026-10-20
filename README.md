@@ -134,11 +134,11 @@ python -m linuxlive validate examples/testos-ubuntu.yaml
    ships a small service, `linuxlive-bootcheck`, that reports to the serial
    port when (and only when) QEMU passes a test flag: OS name, firmware,
    Secure Boot state, installed Flatpaks, boot splash, desktop shell, failed
-   system services and update notifiers.
+   system services, crashed programs and update notifiers.
 5. **Verify.** `python -m linuxlive verify-results` checks those reports and
    the screenshots against the spec. A run that boots the wrong name, the
-   upstream boot splash, a failed system service or a desktop without the
-   spec's wallpaper fails.
+   upstream boot splash, a failed system service, a crash in the live session
+   or a desktop without the spec's wallpaper fails.
 
 When booted from the ISO, a live-only service, `linuxlive-live`, turns off
 update notifiers (nothing installed in a live session survives shutdown) and

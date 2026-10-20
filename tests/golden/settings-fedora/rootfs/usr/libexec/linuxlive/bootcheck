@@ -228,12 +228,30 @@ session_errors() {
 	} | grep -iE 'error|critical|fatal|segfault|crash|traceback|assert|dumped core|signal|memory|oom|#[0-9]+ ' | tail -n 20 |
 		while IFS= read -r line; do fact session_error "$line"; done
 	session_end
-	# Ubuntu's apport keeps crashes in /var/crash rather than systemd-coredump.
+	crash_reports
+}
+
+# Programs that crashed, each reported once: Ubuntu's apport keeps a report in
+# /var/crash (and tells the user "... has experienced an internal error");
+# elsewhere systemd-coredump logs each dump.
+crashes_seen=""
+crash_reports() {
 	for report in /var/crash/*.crash; do
 		[ -f "$report" ] || continue
-		grep -aE '^(ExecutablePath|Signal|Title|ProcStatus):' "$report" 2>/dev/null | head -n 4 |
+		case "$crashes_seen" in *"|$report|"*) continue ;; esac
+		crashes_seen="$crashes_seen|$report|"
+		grep -aE '^(ExecutablePath|Signal|Title):' "$report" 2>/dev/null | head -n 3 |
 			while IFS= read -r line; do fact crash_report "$(basename "$report"): $line"; done
 	done
+	dumps=$(journalctl -b --no-pager -o cat -t systemd-coredump 2>/dev/null | grep -E '^Process [0-9]+ \(.*\) of user [0-9]+ ')
+	while IFS= read -r line; do
+		[ -n "$line" ] || continue
+		case "$crashes_seen" in *"|$line|"*) continue ;; esac
+		crashes_seen="$crashes_seen|$line|"
+		fact crash_report "systemd-coredump: $line"
+	done <<EOF
+$dumps
+EOF
 }
 
 # Who ended a session: systemd-oomd's kills (memory pressure), and logind's and
@@ -568,11 +586,17 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		ready=$(date +%s)
 		# A desktop shell can start and then crash (Cinnamon then shows its
 		# fallback-mode dialog). Look again once the session has settled, and
-		# keep the session's own error lines if the shell is gone.
+		# keep the session's own error lines if the shell is gone. One that
+		# crashed and came back (the display manager logs the user in again)
+		# is another process.
 		sleep 30
 		pid=$(pgrep -u "$user" -x "$shell" 2>/dev/null | head -n 1)
 		if [ -n "$pid" ]; then
 			fact shell_after_settle "$shell"
+			if [ -n "$shell_pid" ] && [ "$pid" != "$shell_pid" ]; then
+				fact shell_restarted "pid $shell_pid at login, $pid 30 s later"
+				session_errors "$user"
+			fi
 		else
 			fact shell_after_settle none
 			session_errors "$user"
@@ -703,6 +727,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		if systemctl cat casper-md5check.service >/dev/null 2>&1; then
 			fact casper_md5check "$(casper_md5check)"
 		fi
+		crash_reports
 		# Every check after login is done; the test harness may stop the VM.
 		say LINUXLIVE_CHECKED
 		[ -n "$pid" ] || exit 0

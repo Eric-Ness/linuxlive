@@ -295,6 +295,19 @@ BREAKS = {
         lambda d: d["facts"].update(shell_crashed=["64"], session_error=["systemd-coredump[990]: Process 812 (cinnamon) of user 999 dumped core."]),
         "desktop shell kept running until the test ended (watched: 'gnome-shell', crashed 64 s after login); session errors: systemd-coredump",
     ),
+    "shell crashed and came back": (
+        f"modes/{SESSION_MODE}/result.json",
+        lambda d: d["facts"].update(shell_restarted=["pid 1830 at login, 2711 30 s later"], session_error=["gnome-shell[1830]: segfault at 0"]),
+        "desktop shell is still the one that started at login (restarted: pid 1830 at login, 2711 30 s later); session errors: gnome-shell[1830]",
+    ),
+    "a program crashed": (
+        *_set_fact(SESSION_MODE, "crash_report", [
+            "_usr_bin_gnome-shell.999.crash: ExecutablePath: /usr/bin/gnome-shell",
+            "_usr_bin_gnome-shell.999.crash: Signal: 11",
+        ]),
+        "nothing crashed in the live session (crash reports: _usr_bin_gnome-shell.999.crash: ExecutablePath: /usr/bin/gnome-shell"
+        " | _usr_bin_gnome-shell.999.crash: Signal: 11)",
+    ),
     "shell not watched": (
         *_set_fact(SESSION_MODE, "shell_watch", []),
         "desktop shell kept running until the test ended (watched: None)",
