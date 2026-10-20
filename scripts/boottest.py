@@ -79,6 +79,15 @@ AAVMF = {
         ["/usr/share/AAVMF/AAVMF_VARS.ms.fd"],
     ),
 }
+# The CPU an emulated ARM64 guest gets (GitHub's arm64 runners have no KVM).
+# Not QEMU's "max": it offers Armv8.8's memory copy and set instructions
+# (FEAT_MOPS), glibc then does memset with them, and on QEMU 8.2 (the runner's)
+# gnome-shell crashes in that memset within minutes of login. Neoverse N2
+# (Armv9.0) has no MOPS but has pointer authentication and branch target
+# identification, as Apple-silicon Macs do, which Ubuntu's and Fedora's code
+# is built to use. Without SVE, which those Macs lack too. Pointer
+# authentication is slow to emulate exactly; QEMU's own variant is much faster.
+ARM_EMULATED_CPU = "neoverse-n2,pauth-impdef=on,sve=off"
 PREFIX = "LINUXLIVE_"
 
 
@@ -217,8 +226,7 @@ def arm_command(iso: Path, mode: str, workdir: Path, serial: Path, qmp: Path, me
         "-drive", f"if=pflash,format=raw,unit=0,readonly=on,file={first_existing(code_paths)}",
         "-drive", f"if=pflash,format=raw,unit=1,file={vars_copy}",
     ]
-    # Pointer authentication is slow to emulate exactly; QEMU's own variant is much faster.
-    cmd += ["-accel", "kvm", "-cpu", "host"] if kvm else ["-accel", "tcg,thread=multi", "-cpu", "max,pauth-impdef=on"]
+    cmd += ["-accel", "kvm", "-cpu", "host"] if kvm else ["-accel", "tcg,thread=multi", "-cpu", ARM_EMULATED_CPU]
     if "disk" in media:
         if disk is None:
             raise SystemExit(f"--mode {mode} needs --disk")

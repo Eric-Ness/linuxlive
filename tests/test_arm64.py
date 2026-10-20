@@ -92,7 +92,9 @@ def test_boottest_runs_arm_on_qemus_virt_machine(tmp_path, monkeypatch):
     monkeypatch.setattr(boottest.shutil, "copyfile", lambda src, dst: dst)
     cmd = boottest.qemu_command(Path("x.iso"), "uefi-cd", tmp_path, tmp_path / "s", tmp_path / "q", 4096, 4, False, arch="arm64")
     assert cmd[0] == "qemu-system-aarch64" and cmd[cmd.index("-machine") + 1] == "virt"
-    assert "tcg,thread=multi" in cmd and "max,pauth-impdef=on" in cmd
+    # Emulated, not on QEMU's "max", whose MOPS instructions crash gnome-shell on the runner's QEMU 8.2.
+    cpu = cmd[cmd.index("-cpu") + 1]
+    assert "tcg,thread=multi" in cmd and cpu == boottest.ARM_EMULATED_CPU and cpu.split(",")[0] != "max"
     assert "scsi-cd,bus=scsi.0,drive=boot,bootindex=0" in cmd and "virtio-gpu-pci" in cmd
     assert any("AAVMF_CODE.no-secboot.fd" in a for a in cmd)
     sb = boottest.qemu_command(Path("x.iso"), "uefi-sb-cd", tmp_path, tmp_path / "s", tmp_path / "q", 4096, 4, True, arch="arm64")
