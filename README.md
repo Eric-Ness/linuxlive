@@ -66,10 +66,11 @@ runners. ARM64 ISOs boot through UEFI only (ARM has no BIOS) and are meant
 for virtual machines on Apple-silicon Macs: UTM, Parallels, VMware Fusion.
 GitHub's arm64 runners have no KVM, so their boot tests run emulated (QEMU's
 TCG, with longer timeouts); everything else is checked as on amd64. The
-emulated CPU is a Neoverse N2 without SVE: pointer authentication and branch
-target identification, as on Apple-silicon Macs. It isn't QEMU's `max`,
-because on the runners' QEMU 8.2 gnome-shell crashed minutes after login on
-it, in a memset that used the newer CPU's memory-copy instructions (MOPS).
+emulated CPU is a Neoverse N1, which runs the same NEON code as Apple-silicon
+Macs and is the fastest to emulate. It has no pointer authentication, so the
+instructions for it run as no-ops. It isn't QEMU's `max`, because on the
+runners' QEMU 8.2 gnome-shell crashed minutes after login on it, in a memset
+that used the newer CPU's memory-copy instructions (MOPS).
 
 Apps in `flathub` are checked against Flathub's API by `validate --online`,
 which the build workflow runs first: each must exist, be an app (not a

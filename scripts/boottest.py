@@ -82,12 +82,14 @@ AAVMF = {
 # The CPU an emulated ARM64 guest gets (GitHub's arm64 runners have no KVM).
 # Not QEMU's "max": it offers Armv8.8's memory copy and set instructions
 # (FEAT_MOPS), glibc then does memset with them, and on QEMU 8.2 (the runner's)
-# gnome-shell crashes in that memset within minutes of login. Neoverse N2
-# (Armv9.0) has no MOPS but has pointer authentication and branch target
-# identification, as Apple-silicon Macs do, which Ubuntu's and Fedora's code
-# is built to use. Without SVE, which those Macs lack too. Pointer
-# authentication is slow to emulate exactly; QEMU's own variant is much faster.
-ARM_EMULATED_CPU = "neoverse-n2,pauth-impdef=on,sve=off"
+# gnome-shell crashes in that memset within minutes of login. A Neoverse N1
+# (Armv8.2) runs the NEON code Apple-silicon Macs run, and is the fastest to
+# emulate. It has no pointer authentication or BTI, whose instructions it runs
+# as no-ops. QEMU 8.2's only models with both (Neoverse N2, Cortex-A710) also
+# have SVE2, which those Macs lack, and are as slow as max. With SVE turned
+# off, gnome-shell died on an illegal instruction (SIGILL) minutes after login,
+# probably in code chosen by the CPU's name, which still says Neoverse N2.
+ARM_EMULATED_CPU = "neoverse-n1"
 PREFIX = "LINUXLIVE_"
 
 
