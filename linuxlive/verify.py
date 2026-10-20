@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,8 +62,6 @@ class Outcome:
     check: str
     ok: bool
     detail: str
-    # Passed, but found something worth a look.
-    warning: bool = False
 
 
 class _Collector:
@@ -75,9 +72,6 @@ class _Collector:
     def expect(self, ok: bool, detail: str) -> bool:
         self.outcomes.append(Outcome(self.check, bool(ok), detail))
         return bool(ok)
-
-    def warn(self, detail: str) -> None:
-        self.outcomes.append(Outcome(self.check, True, detail, warning=True))
 
 
 def _load(path: Path) -> dict | None:
@@ -94,25 +88,6 @@ def _facts(result: dict, key: str) -> list[str]:
 def _fact(result: dict, key: str) -> str | None:
     values = _facts(result, key)
     return values[0] if values else None
-
-
-def _crashes_by_program(lines: list[str]) -> dict[str, list[str]]:
-    """bootcheck's crash_report lines by the program that crashed: an apport
-    report's lines ("<report>: ExecutablePath: /usr/bin/x", "<report>: Signal:
-    11") by its ExecutablePath, systemd-coredump's ("systemd-coredump: Process
-    812 (x) of user 999 dumped core.") by the process name."""
-    programs = {}
-    for line in lines:
-        report, _, field = line.partition(": ")
-        if field.startswith("ExecutablePath: "):
-            programs[report] = field.rsplit("/", 1)[-1]
-    grouped: dict[str, list[str]] = {}
-    for line in lines:
-        report, _, field = line.partition(": ")
-        dump = re.match(r"Process [0-9]+ \((.*)\) of user ", field) if report == "systemd-coredump" else None
-        program = dump.group(1) if dump else programs.get(report, report)
-        grouped.setdefault(program, []).append(line)
-    return grouped
 
 
 def check_meta(spec: Spec, results: Path, expect_commit: str | None) -> list[Outcome]:
@@ -410,13 +385,9 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
         + (f" (restarted: {restarted})" if restarted else "")
         + (f"; session errors: {' | '.join(errors)}" if errors and restarted else ""),
     )
-    # Ubuntu tells the user about each crash ("... has experienced an internal
-    # error"). The shell's own fails the session; any other program's is shown.
-    crashes = _crashes_by_program(_facts(result, "crash_report"))
-    own = crashes.pop(shell, [])
-    c.expect(not own, "desktop shell left no crash report" + (f" (crash reports: {' | '.join(own)})" if own else ""))
-    if crashes:
-        c.warn(f"other programs crashed in the live session: {' | '.join(line for lines in crashes.values() for line in lines)}")
+    # Ubuntu tells the user about each one ("... has experienced an internal error").
+    crashes = _facts(result, "crash_report")
+    c.expect(not crashes, "nothing crashed in the live session" + (f" (crash reports: {' | '.join(crashes)})" if crashes else ""))
     c.expect(
         _fact(result, "plymouth_theme") == "linuxlive",
         f"Plymouth theme is {_fact(result, 'plymouth_theme')!r}, expected 'linuxlive'",

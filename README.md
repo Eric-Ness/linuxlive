@@ -138,9 +138,8 @@ python -m linuxlive validate examples/testos-ubuntu.yaml
    system services, crashed programs and update notifiers.
 5. **Verify.** `python -m linuxlive verify-results` checks those reports and
    the screenshots against the spec. A run that boots the wrong name, the
-   upstream boot splash, a failed system service, a desktop shell that crashes
-   or a desktop without the spec's wallpaper fails. Other programs that crash
-   in the live session are shown as warnings (`WARN`).
+   upstream boot splash, a failed system service, a crash in the live session
+   or a desktop without the spec's wallpaper fails.
 
 When booted from the ISO, a live-only service, `linuxlive-live`, turns off
 update notifiers (nothing installed in a live session survives shutdown) and
