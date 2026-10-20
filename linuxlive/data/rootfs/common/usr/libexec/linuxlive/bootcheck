@@ -242,6 +242,10 @@ crash_reports() {
 		crashes_seen="$crashes_seen|$report|"
 		grep -aE '^(ExecutablePath|Signal|Title):' "$report" 2>/dev/null | head -n 3 |
 			while IFS= read -r line; do fact crash_report "$(basename "$report"): $line"; done
+		# A Python program's report has no signal; its traceback's last line
+		# (the field's lines start with a space) names the exception.
+		exception=$(sed -n '/^Traceback:/,/^[^ ]/{/^ /p;}' "$report" 2>/dev/null | tail -n 1)
+		[ -z "$exception" ] || fact crash_report "$(basename "$report"): Exception: ${exception# }"
 	done
 	dumps=$(journalctl -b --no-pager -o cat -t systemd-coredump 2>/dev/null | grep -E '^Process [0-9]+ \(.*\) of user [0-9]+ ')
 	while IFS= read -r line; do
