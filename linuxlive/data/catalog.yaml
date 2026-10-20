@@ -41,10 +41,6 @@ bases:
     system_packages: [dracut-live, livesys-scripts, plymouth-theme-spinner, plymouth-plugin-two-step]
     # The installer's window; bootc (in the image already) does the install.
     installer_packages: [python3-gobject, gtk3]
-    # Never installed, even when a package recommends them. Fedora's Atomic
-    # images leave PackageKit out: it installs and updates packages in place,
-    # and a bootc system takes its updates as whole images.
-    blocked_packages: [PackageKit]
     # Fedora's trademark guidelines ask a distribution that isn't Fedora to
     # replace Fedora's logos; generic-logos is Fedora's own neutral set.
     # Each is swapped only when the base image has it.

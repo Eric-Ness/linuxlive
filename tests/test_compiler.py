@@ -244,19 +244,6 @@ def test_snap_packages_are_blocked_on_ubuntu(workspace):
     assert containerfile.index("COPY rootfs/etc/apt/preferences.d/linuxlive") < containerfile.index("apt-get install")
 
 
-@pytest.mark.parametrize("desktop", ["gnome", "kde", "cinnamon"])
-def test_packagekit_is_blocked_on_fedora(workspace, desktop):
-    # system-config-printer-libs recommends it, and dnf installs what is recommended.
-    data = spec_data(base="fedora", desktop=desktop, packages=["htop"], settings={"language": "de_DE"})
-    ctx, plan = build_context(load_spec(write_spec(workspace, data)))
-    assert plan.base.blocked_packages == ("PackageKit",)
-    installs = [line.strip() for line in text(ctx, "Containerfile").splitlines() if "dnf -y install" in line]
-    # Live boot, the installer, the language, the spec's packages (and Cinnamon itself).
-    assert len(installs) == (5 if desktop == "cinnamon" else 4), installs
-    for line in installs:
-        assert line.startswith("dnf -y install --exclude=PackageKit "), line
-
-
 @pytest.mark.parametrize("base", ["ubuntu", "fedora"])
 def test_cinnamon_override_sets_wallpaper_and_menu_logo_in_both_scopes(workspace, base):
     ctx, plan = build_context(load_spec(write_spec(workspace, spec_data(base=base, desktop="cinnamon"))))
@@ -284,7 +271,7 @@ def test_fedora_installs_cinnamon_onto_base_atomic(workspace):
     cinnamon, plan = build_context(load_spec(write_spec(workspace, spec_data(base="fedora", desktop="cinnamon"))))
     containerfile = text(cinnamon, "Containerfile")
     assert "FROM quay.io/fedora-ostree-desktops/base-atomic:44" in containerfile
-    assert f"dnf -y install --exclude=PackageKit {' '.join(plan.variant.packages)};" in containerfile
+    assert f"dnf -y install {' '.join(plan.variant.packages)};" in containerfile
     assert {"cinnamon", "lightdm", "slick-greeter"} <= set(plan.variant.packages)
     # The printers applet's settings window; base-atomic has CUPS itself.
     assert "system-config-printer" in plan.variant.packages

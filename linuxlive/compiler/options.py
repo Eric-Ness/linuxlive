@@ -66,7 +66,7 @@ def packages_step(plan: Plan) -> str:
         run = ("RUN set -eux; \\\n    apt-get update; \\\n    apt-get install -y " + " ".join(names)
                + "; \\\n    apt-get clean; \\\n    rm -rf /var/lib/apt/lists/*")
     else:
-        run = f"RUN set -eux; \\\n    {plan.dnf_install(names)}; \\\n    dnf clean all"
+        run = f"RUN set -eux; \\\n    dnf -y install {' '.join(names)}; \\\n    dnf clean all"
     return f"\n# Settings: the language's translations{' and kiosk mode' if plan.spec.kiosk else ''}.\n{run}\n"
 
 

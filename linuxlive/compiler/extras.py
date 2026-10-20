@@ -104,7 +104,7 @@ def packages_step(plan: Plan) -> str:
         run = ("RUN set -eux; \\\n    apt-get update; \\\n    apt-get install -y " + names
                + "; \\\n    apt-get clean; \\\n    rm -rf /var/lib/apt/lists/*")
     else:
-        run = f"RUN set -eux; \\\n    {plan.dnf_install(packages)}; \\\n    dnf clean all"
+        run = f"RUN set -eux; \\\n    dnf -y install {names}; \\\n    dnf clean all"
     return f"\n# The distro's own packages (packages in the spec).\n{run}\n"
 
 
