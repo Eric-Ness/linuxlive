@@ -122,7 +122,7 @@ def test_every_catalog_language_and_layout_is_accepted(workspace):
 def test_the_language_brings_its_translations(workspace, base, desktop, packages):
     ctx, plan = build_context(load_spec(write_spec(workspace, spec_data(base=base, desktop=desktop, settings=FULL))))
     containerfile = text(ctx, "Containerfile")
-    install = "apt-get install -y " if base == "ubuntu" else "dnf -y install "
+    install = "apt-get install -y " if base == "ubuntu" else "dnf -y install --exclude=PackageKit "
     assert f"{install}{packages};" in containerfile
     # Before the image's own files and finalize, which generates the locale.
     assert containerfile.index(packages) < containerfile.index("COPY rootfs/ /")

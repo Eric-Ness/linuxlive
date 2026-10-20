@@ -7,7 +7,7 @@ FROM quay.io/fedora/fedora-kinoite:44
 
 # Live boot (dmsquash-live), live session setup (livesys) and the boot splash.
 RUN set -eux; \
-    dnf -y install dracut-live livesys-scripts plymouth-theme-spinner plymouth-plugin-two-step; \
+    dnf -y install --exclude=PackageKit dracut-live livesys-scripts plymouth-theme-spinner plymouth-plugin-two-step; \
     dnf clean all
 
 # Fedora's logos are Fedora's trademarks; a distro that isn't Fedora uses
@@ -20,7 +20,7 @@ RUN set -eux; \
 # The installer's window (usr/libexec/linuxlive/installer); the install
 # itself is bootc's, from the published image (install-to-disk).
 RUN set -eux; \
-    dnf -y install python3-gobject gtk3; \
+    dnf -y install --exclude=PackageKit python3-gobject gtk3; \
     dnf clean all
 
 COPY rootfs/ /

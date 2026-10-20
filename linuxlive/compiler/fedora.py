@@ -23,7 +23,6 @@ def add_base(ctx: BuildContext, plan: Plan) -> None:
 
 
 def containerfile(plan: Plan) -> str:
-    packages = " ".join(plan.base.system_packages)
     desktop = ""
     if plan.variant.packages:
         # GNOME and KDE come with their Atomic images; other desktops are
@@ -31,7 +30,7 @@ def containerfile(plan: Plan) -> str:
         desktop = f"""
 # Desktop: {plan.desktop.label}.
 RUN set -eux; \\
-    dnf -y install {' '.join(plan.variant.packages)}; \\
+    {plan.dnf_install(plan.variant.packages)}; \\
     dnf clean all
 """
     debrand = ""
@@ -51,7 +50,7 @@ RUN set -eux; \\
 # The installer's window (usr/libexec/linuxlive/installer); the install
 # itself is bootc's, from the published image (install-to-disk).
 RUN set -eux; \\
-    dnf -y install {' '.join(plan.base.installer_packages)}; \\
+    {plan.dnf_install(plan.base.installer_packages)}; \\
     dnf clean all
 """
     return f"""{header_comment(plan)}
@@ -61,7 +60,7 @@ FROM {plan.base_image}
 
 # Live boot (dmsquash-live), live session setup (livesys) and the boot splash.
 RUN set -eux; \\
-    dnf -y install {packages}; \\
+    {plan.dnf_install(plan.base.system_packages)}; \\
     dnf clean all
 {desktop}{debrand}{installer}{options.packages_step(plan)}{packages_step(plan)}
 COPY rootfs/ /

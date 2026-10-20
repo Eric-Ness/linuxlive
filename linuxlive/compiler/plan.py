@@ -82,6 +82,11 @@ class Plan:
         """The base's package list for this plan's architecture."""
         return self.base.packages(kind, self.arch.name)
 
+    def dnf_install(self, names: tuple[str, ...] | list[str]) -> str:
+        """dnf's install command, which keeps the base's blocked packages out even when one is recommended."""
+        exclude = f" --exclude={','.join(self.base.blocked_packages)}" if self.base.blocked_packages else ""
+        return f"dnf -y install{exclude} {' '.join(names)}"
+
     @property
     def wallpaper_path(self) -> str:
         return f"{WALLPAPER_DIR}/{self.wallpaper_file}"

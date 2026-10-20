@@ -41,6 +41,10 @@ bases:
     system_packages: [dracut-live, livesys-scripts, plymouth-theme-spinner, plymouth-plugin-two-step]
     # The installer's window; bootc (in the image already) does the install.
     installer_packages: [python3-gobject, gtk3]
+    # Never installed, even when a package recommends them. Fedora's Atomic
+    # images leave PackageKit out: it installs and updates packages in place,
+    # and a bootc system takes its updates as whole images.
+    blocked_packages: [PackageKit]
     # Fedora's trademark guidelines ask a distribution that isn't Fedora to
     # replace Fedora's logos; generic-logos is Fedora's own neutral set.
     # Each is swapped only when the base image has it.
@@ -80,9 +84,12 @@ desktops:
     # Fedora has no Cinnamon Atomic image, so Cinnamon goes onto base-atomic,
     # the image Silverblue and Kinoite are built from. dnf in bootc images may
     # skip weak dependencies, so the recommended pieces are named too.
+    # base-atomic has CUPS, and cinnamon requires its client (lpstat, lpq, lp,
+    # cancel); system-config-printer, which the applet and System Settings'
+    # Printers open, and cups-pk-helper come with Fedora's own Cinnamon spin.
     fedora:
       image: quay.io/fedora-ostree-desktops/base-atomic:44
-      packages: [cinnamon, cinnamon-control-center, lightdm, slick-greeter, xorg-x11-drv-libinput, gnome-terminal, gnome-software, flatpak]
+      packages: [cinnamon, cinnamon-control-center, lightdm, slick-greeter, xorg-x11-drv-libinput, gnome-terminal, gnome-software, flatpak, system-config-printer, cups-pk-helper]
       livesys_session: cinnamon
 
 # Apps are installed from Flathub, so one ID works on every base. kiosk_args
