@@ -1,3 +1,3 @@
 """linuxlive: compile a distro spec into a container build and a live ISO."""
 
-__version__ = "0.8.1"
+__version__ = "0.8.2"
