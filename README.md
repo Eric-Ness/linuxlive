@@ -30,6 +30,9 @@ branding:
   wallpaper: assets/wallpaper.png   # PNG or JPEG, at least 1280x720
   logo: assets/logo.png             # square PNG: 128, 256 or 512 px
   accent_color: "#c2185b"           # optional
+  splash:                           # optional boot splash of its own (since v0.9.0)
+    script: assets/splash/splash.script
+    images: [assets/splash/strip.png]
 # Optional extras (since v0.4.0): the distro's own additions.
 packages: [htop]                    # from the base's own archive
 files:
@@ -50,6 +53,7 @@ settings:
   hostname: lab-pc                  # defaults to the id
   autologin: true                   # installed systems log straight in
   hidden_apps: [yelp]               # menu entries to hide (desktop file names)
+  dock: [firefox, org.gnome.Chess]  # pinned after the file manager, in order (since v0.9.0)
 firefox:                            # needs firefox in apps
   homepage: https://example.org/
   bookmarks:
@@ -82,6 +86,29 @@ what the first wrote, the system's and the user's. Fedora-based distros
 cannot have it yet: dmsquash-live keeps a persistent overlay only on a
 partition that something has to make on the stick beforehand, and nothing
 does that for a written ISO.
+
+Without `splash`, the boot splash is the logo over a spinner. With it, the
+splash is the distro's own: a [Plymouth script](https://www.freedesktop.org/wiki/Software/Plymouth/Scripts/)
+and the PNG images it loads by file name (the logo is there too, as
+`watermark.png`). Plymouth's script language draws images and moves them; it
+cannot read files or run commands, so a splash is data like the wallpaper and
+does not stop "Build it for me". Limits: a UTF-8 script of at most 64 KB, up
+to 24 PNG images named with letters, digits, `.`, `_` and `-`, 8 MB in all,
+since the splash rides in the initramfs that every boot loads first. On
+Fedora the build adds `plymouth-plugin-script`; Ubuntu's `plymouth` has it.
+Text-mode boots (no early graphics) still show the text splash. CI boots
+both Lawn Darts examples with an example splash
+([scripts/make_splash_example.py](scripts/make_splash_example.py)), checks
+that the initramfs carries the script, every image and the script plugin, and
+keeps a few screenshots from before the session (`boot-*.png`) to see it.
+
+`settings.dock` pins up to 12 of the distro's own apps (ids from `apps` or
+`flathub`) to the dock or panel, in order, after the desktop's file manager
+(Files, Dolphin or Nemo); without it each desktop keeps its own. GNOME (and
+Ubuntu's dock) gets them as its `favorite-apps` default, Cinnamon as its
+panel's pinned apps, KDE Plasma as its task manager's launchers on each
+user's first login. CI reads the logged-in user's dock on the live desktop
+and the installed disk, and checks it holds exactly that list.
 
 Settings, Firefox's policies and kiosk mode are data, so a spec with only
 those (no scripts or repos) is one linuxlive.com's "Build it for me" builds.
@@ -142,7 +169,7 @@ stops KDE's welcome window offering an installer the image doesn't have.
 
 Branding covers the OS name in os-release, `IMAGE_ID` and `IMAGE_VERSION`, the
 wallpaper (desktop, lock screen and, on KDE and Cinnamon, the login screen),
-the Plymouth boot splash built from the logo (and, on Ubuntu, its text-mode
+the Plymouth boot splash built from the logo or the spec's own `splash` (and, on Ubuntu, its text-mode
 fallback), the GRUB menu, the accent colour on GNOME and KDE, the login logo
 on GNOME and the menu button on Cinnamon. Cinnamon has no accent setting; its
 theme fixes the colours. ID and VERSION_ID stay upstream's so package tools

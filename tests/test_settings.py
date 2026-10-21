@@ -81,6 +81,10 @@ def test_a_spec_without_options_has_none(workspace):
         ({"settings": {"hidden_apps": ["linuxlive-install"]}}, "settings/hidden_apps: 'linuxlive-install' is linuxlive's own"),
         ({"settings": {"hidden_apps": ["../../etc/x"]}}, "settings/hidden_apps/0: '../../etc/x' does not match"),
         ({"settings": {"wallpaper": "x"}}, "settings: Additional properties are not allowed"),
+        ({"settings": {"dock": ["gimp"]}}, "settings/dock/0: 'gimp' is not one of the spec's apps or flathub apps"),
+        ({"settings": {"dock": ["vlc", "vlc"]}}, "settings/dock: ['vlc', 'vlc'] has non-unique elements"),
+        ({"settings": {"dock": ["vlc"] * 13}}, "settings/dock: ['vlc'"),
+        ({"settings": {"dock": "vlc"}}, "settings/dock: 'vlc' is not of type 'array'"),
         ({"apps": ["vlc"], "firefox": {"homepage": "https://example.org/"}}, "firefox: the home page and bookmarks are Firefox's; add firefox to apps"),
         ({"firefox": {"homepage": "javascript:alert(1)"}}, "firefox/homepage: 'javascript:alert(1)' does not match"),
         ({"firefox": {"homepage": 'https://x.org/"><script>'}}, "firefox/homepage"),
@@ -312,6 +316,8 @@ def example_results(root: Path, name: str, persistence: bool = True) -> tuple[ob
                 f["keyboard_system"] = [s.keyboard]
                 f["keyboard_session"] = [s.keyboard]
             f["hidden_app"] = [f"{name}=hidden" for name in s.hidden_apps]
+            if plan.dock:
+                f["dock_apps"] = [" ".join(plan.dock)]
             policies = firefox_policies_text(plan)
             if policies:
                 f["firefox_policies"] = [hashlib.sha256(policies.encode()).hexdigest()]
@@ -381,6 +387,13 @@ def _fact(results: Path, mode: str, key: str, value) -> None:
         ("settings-ubuntu", "installed-uefi-sb", "session_lang", ["en_US.UTF-8"], "installed-uefi-sb: the session runs in 'en_US.UTF-8'"),
         ("settings-fedora", SESSION_MODE, "keyboard_session", ["us"], "the session types with layout 'us', expected 'de'"),
         ("settings-cinnamon", SESSION_MODE, "keyboard_session", [""], "the session types with layout '', expected 'br'"),
+        # settings.dock: the desktop's own dock, the right apps in the wrong order, the fact missing.
+        ("settings-ubuntu", SESSION_MODE, "dock_apps", ["org.mozilla.firefox.desktop org.gnome.Nautilus.desktop snap-store_snap-store.desktop"],
+         "the dock pins 'org.gnome.Nautilus.desktop org.mozilla.firefox.desktop'"),
+        ("settings-fedora", SESSION_MODE, "dock_apps", ["org.kde.dolphin.desktop org.mozilla.firefox.desktop org.kde.kcalc.desktop"],
+         "the dock pins 'org.kde.dolphin.desktop org.kde.kcalc.desktop org.mozilla.firefox.desktop'"),
+        ("settings-cinnamon", SESSION_MODE, "dock_apps", [], "the dock pins 'nemo.desktop org.gnome.Chess.desktop org.videolan.VLC.desktop' (found None)"),
+        ("settings-ubuntu", "installed-uefi-sb", "dock_apps", ["none"], "installed-uefi-sb: the dock pins"),
         ("kiosk-ubuntu", SESSION_MODE, "desktop_shells", ["gnome-shell"], "kiosk mode runs no desktop shell (running: 'gnome-shell')"),
         ("kiosk-ubuntu", SESSION_MODE, "kiosk_apps", ["none"], "kiosk mode shows org.mozilla.firefox"),
         ("kiosk-ubuntu", SESSION_MODE, "shell", ["gnome-shell"], "desktop shell is 'gnome-shell', expected 'cage'"),

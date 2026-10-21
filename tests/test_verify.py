@@ -494,3 +494,52 @@ def test_a_pale_wallpaper_still_catches_a_wrong_screen(tmp_path, make, expected)
 def test_utc_has_more_than_one_name():
     assert _same_zone("Etc/UTC", "UTC") and _same_zone("UTC", "Etc/UTC") and _same_zone("Europe/Madrid", "Europe/Madrid")
     assert not _same_zone("Europe/London", "UTC") and not _same_zone(None, "UTC")
+
+
+# ---- A spec's own boot splash ----
+
+def splash_spec():
+    """TestOS with the lawn darts example's splash."""
+    spec = load()
+    darts = load_spec(EXAMPLES / "lawndarts-ubuntu.yaml").branding.splash
+    return dataclasses.replace(spec, branding=dataclasses.replace(spec.branding, splash=darts))
+
+
+GOOD_SPLASH = {
+    "plymouth_module": ["script"],
+    "initrd_splash_files": ["bar-bg.png bar.png dart.png linuxlive.plymouth linuxlive.script watermark.png"],
+    "initrd_plymouth_plugins": ["details script text"],
+}
+
+
+def splash_results(tmp_path, **changes):
+    results = make_results(tmp_path / "r")
+    edit_json(results / "modes" / SESSION_MODE / "result.json", lambda d: d["facts"].update({**GOOD_SPLASH, **changes}))
+    return results
+
+
+def test_a_packed_splash_passes(tmp_path):
+    outcomes = verify_results(splash_spec(), splash_results(tmp_path), expect_commit=COMMIT)
+    assert not failures(outcomes), failures(outcomes)
+    passed = [o.detail for o in outcomes if o.ok]
+    assert any(d.startswith("boot splash theme uses the script module") for d in passed)
+    assert any(d.startswith("initramfs carries the boot splash script, its images and the script plugin (6 files") for d in passed)
+
+
+@pytest.mark.parametrize(("change", "expected"), [
+    ({"plymouth_module": ["two-step"]}, "boot splash theme uses the script module (plymouth_module 'two-step')"),
+    ({"plymouth_module": []}, "boot splash theme uses the script module (plymouth_module None)"),
+    ({"initrd_splash_files": ["bar.png linuxlive.plymouth linuxlive.script watermark.png"]}, "missing: bar-bg.png, dart.png"),
+    ({"initrd_splash_files": ["bar-bg.png bar.png dart.png linuxlive.plymouth watermark.png"]}, "missing: linuxlive.script"),
+    ({"initrd_plymouth_plugins": ["details text two-step"]}, "missing: the script plugin"),
+    ({"initrd_splash_files": ["none"], "initrd_plymouth_plugins": ["none"]}, "missing: bar-bg.png, bar.png, dart.png, linuxlive.plymouth, linuxlive.script, watermark.png, the script plugin"),
+])
+def test_a_splash_missing_from_the_boot_is_caught(tmp_path, change, expected):
+    found = failures(verify_results(splash_spec(), splash_results(tmp_path, **change), expect_commit=COMMIT))
+    assert any(expected in f for f in found), found
+
+
+def test_without_a_splash_the_script_checks_do_not_apply(tmp_path):
+    outcomes = verify_results(load(), make_results(tmp_path / "r"), expect_commit=COMMIT)
+    assert not failures(outcomes)
+    assert not any("boot splash" in o.detail and "script" in o.detail for o in outcomes)

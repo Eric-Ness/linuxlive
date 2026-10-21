@@ -20,3 +20,7 @@ settings:
   timezone: America/Sao_Paulo
   hidden_apps:
     - org.gnome.Terminal
+  # Pinned to the panel after the file manager (since v0.9.0).
+  dock:
+    - org.gnome.Chess
+    - vlc

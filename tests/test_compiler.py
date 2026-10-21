@@ -234,6 +234,89 @@ def test_ubuntu_text_splash_carries_the_spec_name(workspace):
     assert "Ubuntu" not in splash
 
 
+THEME = "rootfs/usr/share/plymouth/themes/linuxlive"
+
+
+@pytest.mark.parametrize("base", ["ubuntu", "fedora"])
+def test_a_spec_splash_becomes_the_script_theme(base):
+    spec = load_spec(EXAMPLES / f"lawndarts-{base}.yaml")
+    ctx, _ = build_context(spec)
+    theme = text(ctx, f"{THEME}/linuxlive.plymouth")
+    assert "ModuleName=script" in theme and "two-step" not in theme
+    assert "ScriptFile=/usr/share/plymouth/themes/linuxlive/linuxlive.script" in theme
+    assert "ImageDir=/usr/share/plymouth/themes/linuxlive" in theme
+    assert text(ctx, f"{THEME}/linuxlive.script") == spec.branding.splash.script.read_text(encoding="utf-8")
+    for image in spec.branding.splash.images:
+        assert ctx.files()[f"{THEME}/{image.name}"][0] == image.read_bytes(), image.name
+    # The logo stays in the theme, as watermark.png, for the script to draw.
+    assert ctx.files()[f"{THEME}/watermark.png"][0] == spec.branding.logo.read_bytes()
+    containerfile = text(ctx, "Containerfile")
+    # Fedora's script plugin is its own package; Ubuntu's plymouth already has it.
+    assert ("plymouth-plugin-script" in containerfile) == (base == "fedora")
+
+
+@pytest.mark.parametrize("base", ["ubuntu", "fedora"])
+def test_without_a_splash_the_theme_is_the_logo_over_a_spinner(workspace, base):
+    ctx, _ = build_context(load_spec(write_spec(workspace, spec_data(base=base))))
+    assert "ModuleName=two-step" in text(ctx, f"{THEME}/linuxlive.plymouth")
+    assert f"{THEME}/linuxlive.script" not in ctx.files()
+    assert "plymouth-plugin-script" not in text(ctx, "Containerfile")
+
+
+# ---- settings.dock ----
+
+def test_gnome_dock_is_the_favourites_on_both_scopes():
+    ctx, _ = build_context(load_spec(EXAMPLES / "settings-ubuntu.yaml"))
+    override = text(ctx, "rootfs/usr/share/glib-2.0/schemas/zz_linuxlive.gschema.override")
+    want = "favorite-apps=['org.gnome.Nautilus.desktop', 'org.mozilla.firefox.desktop']"
+    assert "[org.gnome.shell]\n" + want in override and "[org.gnome.shell:ubuntu]\n" + want in override
+    assert "LL_DOCK='org.gnome.Nautilus.desktop org.mozilla.firefox.desktop'" in text(ctx, "rootfs/usr/lib/linuxlive/branding.env")
+
+
+@pytest.mark.parametrize(("name", "dock"), [
+    ("settings-fedora", "org.kde.dolphin.desktop org.kde.kcalc.desktop org.mozilla.firefox.desktop"),
+    ("settings-cinnamon", "nemo.desktop org.gnome.Chess.desktop org.videolan.VLC.desktop"),
+    ("lawndarts-ubuntu", "nemo.desktop org.videolan.VLC.desktop org.mozilla.firefox.desktop"),
+])
+def test_kde_and_cinnamon_get_the_dock_for_their_setup(name, dock):
+    ctx, _ = build_context(load_spec(EXAMPLES / f"{name}.yaml"))
+    assert f"LL_DOCK='{dock}'" in text(ctx, "rootfs/usr/lib/linuxlive/branding.env")
+    override = ctx.files().get("rootfs/usr/share/glib-2.0/schemas/zz_linuxlive.gschema.override")
+    assert override is None or b"favorite-apps" not in override[0]
+
+
+def test_without_a_dock_nothing_is_pinned(workspace):
+    ctx, _ = build_context(load_spec(write_spec(workspace, spec_data())))
+    assert "LL_DOCK" not in text(ctx, "rootfs/usr/lib/linuxlive/branding.env")
+    assert "favorite-apps" not in text(ctx, "rootfs/usr/share/glib-2.0/schemas/zz_linuxlive.gschema.override")
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX sh")
+def test_finalize_pins_the_dock_in_cinnamons_panel_schema(tmp_path):
+    """finalize's own pin_cinnamon_panel, run on a copy of the grouped window list's schema."""
+    import json
+    import subprocess
+    import sys
+
+    source = (ROOT / "linuxlive/data/rootfs/common/usr/libexec/linuxlive/finalize").read_text(encoding="utf-8")
+    start = source.index("pin_cinnamon_panel() {")
+    body = source[start:source.index("\n}\n", start) + 3]
+    schema = tmp_path / "settings-schema.json"
+    shutil.copy(ROOT / "tests/data/grouped-window-list-settings-schema.json", schema)
+    python = shutil.which("python3") or sys.executable
+    script = (
+        'die() { echo "DIE: $*"; exit 1; }\nlog() { echo "LOG: $*"; }\n'
+        f'python3() {{ "{Path(python).as_posix()}" "$@"; }}\n'
+        + body.replace("/usr/share/cinnamon/applets/grouped-window-list@cinnamon.org/settings-schema.json", schema.as_posix())
+        + "LL_DOCK='nemo.desktop org.videolan.VLC.desktop org.mozilla.firefox.desktop'\npin_cinnamon_panel\n"
+    )
+    out = subprocess.run(["sh", "-c", script], capture_output=True, text=True)
+    assert out.returncode == 0, out.stdout + out.stderr
+    data = json.loads(schema.read_text(encoding="utf-8"))
+    assert data["pinned-apps"]["default"] == ["nemo.desktop", "org.videolan.VLC.desktop", "org.mozilla.firefox.desktop"]
+    assert data["group-apps"]["default"] is True  # the rest is left alone
+
+
 def test_snap_packages_are_blocked_on_ubuntu(workspace):
     ctx, _ = build_context(load_spec(write_spec(workspace, spec_data(base="ubuntu"))))
     prefs = text(ctx, "rootfs/etc/apt/preferences.d/linuxlive")

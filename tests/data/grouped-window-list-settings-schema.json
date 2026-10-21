@@ -1,0 +1,15 @@
+{
+    "group-apps": {
+        "type": "switch",
+        "default": true,
+        "description": "Group windows by application"
+    },
+    "pinned-apps": {
+        "type": "generic",
+        "default": [
+            "nemo.desktop",
+            "firefox.desktop",
+            "org.x.velocitty.desktop"
+        ]
+    }
+}

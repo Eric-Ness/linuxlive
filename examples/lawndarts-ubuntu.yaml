@@ -12,3 +12,15 @@ branding:
   wallpaper: assets/lawndarts/wallpaper.png
   logo: assets/lawndarts/logo.png
   accent_color: "#e0661f"
+  # A boot splash of its own (since v0.9.0): see scripts/make_splash_example.py.
+  splash:
+    script: assets/lawndarts/splash/lawndarts.script
+    images:
+      - assets/lawndarts/splash/dart.png
+      - assets/lawndarts/splash/bar.png
+      - assets/lawndarts/splash/bar-bg.png
+settings:
+  # Pinned to the panel after the file manager (since v0.9.0).
+  dock:
+    - vlc
+    - firefox

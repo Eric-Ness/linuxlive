@@ -14,6 +14,65 @@ def test_lawn_darts_examples_are_valid(base):
     assert spec.id == "lawn-darts-linux"  # derived from the name
     assert (spec.base, spec.desktop) == (base, "cinnamon")
     assert spec.branding.wallpaper.parent.name == "lawndarts"
+    # The example splash, which CI boots on both bases.
+    assert spec.branding.splash.script.name == "lawndarts.script"
+    assert [p.name for p in spec.branding.splash.images] == ["dart.png", "bar.png", "bar-bg.png"]
+
+
+def test_splash_is_optional(workspace):
+    assert load_spec(write_spec(workspace, spec_data())).branding.splash is None
+
+
+def splash_workspace(workspace, images=("a.png",)):
+    folder = workspace / "assets" / "splash"
+    folder.mkdir()
+    (folder / "s.script").write_text("Window.SetBackgroundTopColor(0, 0, 0);\n", encoding="utf-8")
+    for name in images:
+        solid_png(folder / name, 8, 8)
+    return {"script": "assets/splash/s.script", "images": [f"assets/splash/{n}" for n in images]}
+
+
+def test_splash_is_read_from_the_spec_folder(workspace):
+    splash = splash_workspace(workspace, ("glow.png", "bar.png"))
+    spec = load_spec(write_spec(workspace, spec_data(branding={"splash": splash})))
+    assert spec.branding.splash.script == (workspace / "assets" / "splash" / "s.script").resolve()
+    assert [p.name for p in spec.branding.splash.images] == ["glow.png", "bar.png"]
+
+
+def _splash_problems(workspace, change):
+    splash = splash_workspace(workspace)
+    change(workspace, splash)
+    with pytest.raises(SpecError) as info:
+        load_spec(write_spec(workspace, spec_data(branding={"splash": splash})))
+    return " | ".join(info.value.problems)
+
+
+def _too_big(ws, s):
+    # Noise does not compress: about 9 MB of PNG, over the 8 MB limit.
+    import os
+    from linuxlive.png import Image, write_png
+    write_png(ws / "assets" / "splash" / "big.png", Image(2000, 1500, os.urandom(2000 * 1500 * 3)), level=1)
+    s["images"].append("assets/splash/big.png")
+
+
+SPLASH_INVALID = {
+    "missing script": (lambda ws, s: s.update(script="assets/splash/none.script"), "branding/splash/script: file 'assets/splash/none.script' not found"),
+    "script outside the folder": (lambda ws, s: s.update(script="../outside.script"), "branding/splash/script: '../outside.script' must be inside the spec's folder"),
+    "binary script": (lambda ws, s: (ws / "assets" / "splash" / "s.script").write_bytes(b"\x00\x01\x02"), "branding/splash/script: 'assets/splash/s.script' is not a text file"),
+    "jpeg image": (lambda ws, s: (tiny_jpeg(ws / "assets" / "splash" / "photo.png", 8, 8), s["images"].append("assets/splash/photo.png")), "branding/splash/images/1: 'assets/splash/photo.png' must be a PNG"),
+    "two images with one name": (lambda ws, s: ((ws / "assets" / "other").mkdir(), solid_png(ws / "assets" / "other" / "a.png", 8, 8), s["images"].append("assets/other/a.png")), "two images are called a.png"),
+    "image called watermark.png": (lambda ws, s: (solid_png(ws / "assets" / "splash" / "watermark.png", 8, 8), s["images"].append("assets/splash/watermark.png")), "watermark.png is the logo's name in the splash"),
+    "image with a bad name": (lambda ws, s: (solid_png(ws / "assets" / "splash" / "my image.png", 8, 8), s["images"].append("assets/splash/my image.png")), "an image's name must be letters, digits"),
+    "too many images": (lambda ws, s: s.update(images=s["images"] * 25), "branding/splash/images: ["),
+    "too many bytes": (_too_big, "a boot splash can be at most 8 MB"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(SPLASH_INVALID))
+def test_bad_splash_is_refused(workspace, case):
+    change, message = SPLASH_INVALID[case]
+    problems = _splash_problems(workspace, change)
+    assert message in problems, problems
 
 
 @pytest.mark.parametrize("name", ["testos-ubuntu", "testos-fedora"])

@@ -294,6 +294,9 @@ def _check_settings(c: _Collector, plan: Plan, result: dict, where: str, *, live
     states = dict(f.split("=", 1) for f in _facts(result, "hidden_app") if "=" in f)
     for name in s.hidden_apps:
         c.expect(states.get(name) in ("hidden", "absent"), f"{where}menu entry {name} is not shown ({states.get(name)!r})")
+    if plan.dock and not kiosk:
+        want = " ".join(plan.dock)
+        c.expect(_fact(result, "dock_apps") == want, f"{where}the dock pins {want!r} (found {_fact(result, 'dock_apps')!r})")
     policies = firefox_policies_text(plan)
     if policies is not None:
         digest = hashlib.sha256(policies.encode("utf-8")).hexdigest()
@@ -408,6 +411,20 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
     )
     packed = (_fact(result, "initrd_plymouth_themes") or "").split()
     c.expect("linuxlive" in packed, f"initramfs carries the linuxlive boot splash (themes packed: {packed})")
+    splash = plan.spec.branding.splash
+    if splash:
+        # The spec's own splash: the script module, and everything it draws, where the first boot stage can load it.
+        module = _fact(result, "plymouth_module")
+        c.expect(module == "script", f"boot splash theme uses the script module (plymouth_module {module!r})")
+        files = set((_fact(result, "initrd_splash_files") or "").split())
+        plugins = set((_fact(result, "initrd_plymouth_plugins") or "").split())
+        wanted = {"linuxlive.plymouth", "linuxlive.script", "watermark.png", *(p.name for p in splash.images)}
+        missing = sorted(wanted - files) + ([] if "script" in plugins else ["the script plugin"])
+        c.expect(
+            not missing,
+            "initramfs carries the boot splash script, its images and the script plugin"
+            + (f" (missing: {', '.join(missing)}; plugins: {sorted(plugins)})" if missing else f" ({len(wanted)} files, plugins: {sorted(plugins)})"),
+        )
     if plan.base.id == "ubuntu":
         # Ubuntu shows a separate text-mode splash when early graphics are missing.
         c.expect(

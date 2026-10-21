@@ -26,6 +26,10 @@ LOGO_SIZES = (128, 256, 512)
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9-]{1,29}$")
 MAX_FILES_BYTES = 20 << 20
 MAX_SCRIPT_BYTES = 256 << 10
+# A boot splash is packed into the initramfs, which every boot loads first.
+MAX_SPLASH_BYTES = 8 << 20
+MAX_SPLASH_SCRIPT_BYTES = 64 << 10
+SPLASH_IMAGE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.png$")
 # Where linuxlive keeps its own files; a spec's files can't replace them.
 RESERVED_DESTS = (
     "/etc/linuxlive",
@@ -46,10 +50,19 @@ class SpecError(ValueError):
 
 
 @dataclass(frozen=True)
+class Splash:
+    """A boot splash of the distro's own: a Plymouth script and its images."""
+
+    script: Path
+    images: tuple[Path, ...]
+
+
+@dataclass(frozen=True)
 class Branding:
     wallpaper: Path
     logo: Path
     accent_color: str | None
+    splash: Splash | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +101,8 @@ class Settings:
     hostname: str | None = None
     autologin: bool = False
     hidden_apps: tuple[str, ...] = ()
+    # Apps pinned to the dock or panel, in order, after the file manager: ids from apps or flathub.
+    dock: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -200,6 +215,8 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
     problems += _check_logo(logo, branding["logo"])
 
     folder = path.parent.resolve()
+    splash, splash_problems = _resolve_splash(folder, branding.get("splash"))
+    problems += splash_problems
     files, file_problems = _resolve_files(folder, base, raw.get("files") or [])
     problems += file_problems
     scripts_raw = raw.get("scripts") or {}
@@ -243,7 +260,7 @@ def load_spec(path: Path | str, catalog: Catalog | None = None) -> Spec:
         desktop=desktop,
         apps=apps,
         flathub=flathub,
-        branding=Branding(wallpaper=wallpaper, logo=logo, accent_color=accent.lower() if accent else None),
+        branding=Branding(wallpaper=wallpaper, logo=logo, accent_color=accent.lower() if accent else None, splash=splash),
         packages=tuple(raw.get("packages") or ()),
         files=files,
         scripts=Scripts(
@@ -286,6 +303,10 @@ def _resolve_options(raw: dict, apps: tuple[str, ...], catalog: Catalog) -> tupl
     for name in hidden:
         if name.lower().startswith("linuxlive"):
             problems.append(f"settings/hidden_apps: {name!r} is linuxlive's own")
+    dock = tuple(s.get("dock") or ())
+    for i, app in enumerate(dock):
+        if app not in apps:
+            problems.append(f"settings/dock/{i}: {app!r} is not one of the spec's apps or flathub apps; only apps the distro has can be pinned")
     settings = Settings(
         language=language,
         keyboard=keyboard,
@@ -293,6 +314,7 @@ def _resolve_options(raw: dict, apps: tuple[str, ...], catalog: Catalog) -> tupl
         hostname=s.get("hostname"),
         autologin=bool(s.get("autologin", False)),
         hidden_apps=hidden,
+        dock=dock,
     )
     firefox = None
     if "firefox" in raw:
@@ -376,6 +398,68 @@ def _resolve_scripts(folder: Path, key: str, entries: list[str]) -> tuple[tuple[
             continue
         scripts.append(src)
     return tuple(scripts), problems
+
+
+def _resolve_splash(folder: Path, raw: dict | None) -> tuple[Splash | None, list[str]]:
+    """The boot splash's script and images, inside the spec's folder, within the limits."""
+    if raw is None:
+        return None, []
+    problems: list[str] = []
+    total = 0
+    script = _inside(folder, raw["script"])
+    if script is None:
+        problems.append(f"branding/splash/script: {raw['script']!r} must be inside the spec's folder")
+    elif not script.is_file():
+        problems.append(f"branding/splash/script: file {raw['script']!r} not found")
+    else:
+        data = script.read_bytes()
+        total += len(data)
+        if len(data) > MAX_SPLASH_SCRIPT_BYTES:
+            problems.append(f"branding/splash/script: {raw['script']!r} is {len(data)} bytes; a splash script can be at most {MAX_SPLASH_SCRIPT_BYTES >> 10} KB")
+        elif b"\0" in data:
+            problems.append(f"branding/splash/script: {raw['script']!r} is not a text file")
+        else:
+            try:
+                data.decode("utf-8")
+            except UnicodeDecodeError:
+                problems.append(f"branding/splash/script: {raw['script']!r} is not a text file (UTF-8)")
+    images: list[Path] = []
+    names: set[str] = set()
+    for i, given in enumerate(raw["images"]):
+        where = f"branding/splash/images/{i}"
+        src = _inside(folder, given)
+        if src is None:
+            problems.append(f"{where}: {given!r} must be inside the spec's folder")
+            continue
+        if not src.is_file():
+            problems.append(f"{where}: file {given!r} not found")
+            continue
+        name = src.name
+        if not SPLASH_IMAGE_NAME.match(name):
+            problems.append(f"{where}: {given!r}: an image's name must be letters, digits, '.', '_' or '-', ending in .png")
+            continue
+        if name == "watermark.png":
+            problems.append(f"{where}: watermark.png is the logo's name in the splash; call this image something else")
+            continue
+        if name in names:
+            problems.append(f"{where}: two images are called {name}; the script loads them by name")
+            continue
+        names.add(name)
+        try:
+            fmt, _w, _h = image_info(src)
+        except ImageError as exc:
+            problems.append(f"{where}: {given!r} is not usable: {exc}")
+            continue
+        if fmt != "png":
+            problems.append(f"{where}: {given!r} must be a PNG")
+            continue
+        total += src.stat().st_size
+        images.append(src)
+    if total > MAX_SPLASH_BYTES:
+        problems.append(f"branding/splash: {total / (1 << 20):.1f} MB in all; a boot splash can be at most {MAX_SPLASH_BYTES >> 20} MB")
+    if problems:
+        return None, problems
+    return Splash(script=script, images=tuple(images)), []  # type: ignore[arg-type]
 
 
 def _check_wallpaper(path: Path, given: str) -> list[str]:

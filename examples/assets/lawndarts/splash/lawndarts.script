@@ -1,0 +1,66 @@
+# Lawn Darts Linux's boot splash, a Plymouth script. The logo sits above the
+# middle of a grass-green screen, a lawn dart arcs across below it again and
+# again, and a bar under the logo fills as the computer starts. The images are
+# from scripts/make_splash_example.py; watermark.png is the spec's logo.
+
+Window.SetBackgroundTopColor(0.184, 0.420, 0.165);
+Window.SetBackgroundBottomColor(0.184, 0.420, 0.165);
+sw = Window.GetWidth();
+sh = Window.GetHeight();
+
+logo_image = Image("watermark.png");
+logo = Sprite(logo_image);
+logo.SetPosition(sw / 2 - logo_image.GetWidth() / 2, sh * 0.42 - logo_image.GetHeight() / 2, 10);
+
+bar_bg_image = Image("bar-bg.png");
+bar_image = Image("bar.png");
+bar_x = sw / 2 - bar_bg_image.GetWidth() / 2;
+bar_y = sh * 0.42 + logo_image.GetHeight() / 2 + 28;
+bar_bg = Sprite(bar_bg_image);
+bar_bg.SetPosition(bar_x, bar_y, 10);
+bar = Sprite();
+bar.SetPosition(bar_x, bar_y, 11);
+
+# The dart flies left to right in an arc, once every 150 refreshes (about 3 s).
+dart_image = Image("dart.png");
+dart = Sprite(dart_image);
+dart.SetZ(20);
+flight = 0;
+
+fun refresh_callback() {
+    flight = flight + 1;
+    if (flight > 150) flight = 0;
+    along = flight / 150;
+    dart.SetX(-dart_image.GetWidth() + (sw + dart_image.GetWidth()) * along);
+    dart.SetY(sh * 0.8 - Math.Sin(Math.Pi * along) * sh * 0.12);
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+fun progress_callback(duration, progress) {
+    width = Math.Int(bar_image.GetWidth() * progress);
+    if (width > 0)
+        bar.SetImage(bar_image.Scale(width, bar_image.GetHeight()));
+}
+Plymouth.SetBootProgressFunction(progress_callback);
+
+# Messages and password prompts (for example a disk check), under the bar.
+message = Sprite();
+message.SetPosition(sw / 2, bar_y + 40, 30);
+fun message_callback(text) {
+    image = Image.Text(text, 1, 1, 1);
+    message.SetImage(image);
+    message.SetX(sw / 2 - image.GetWidth() / 2);
+}
+Plymouth.SetMessageFunction(message_callback);
+
+fun display_password_callback(prompt, bullets) {
+    text = prompt + "  ";
+    for (i = 0; i < bullets; i++) text = text + "*";
+    message_callback(text);
+}
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+fun display_normal_callback() {
+    message.SetImage(Image.Text("", 1, 1, 1));
+}
+Plymouth.SetDisplayNormalFunction(display_normal_callback);

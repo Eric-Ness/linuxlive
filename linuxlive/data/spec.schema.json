@@ -69,6 +69,25 @@
           "description": "Accent colour as #rrggbb.",
           "type": "string",
           "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "splash": {
+          "description": "Optional boot splash of the distro's own: a Plymouth script and the PNG images it draws, relative to the spec file. Without it, the boot splash is the logo over a spinner.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["script", "images"],
+          "properties": {
+            "script": {
+              "description": "A Plymouth script (the script plugin's language: images and sprites only, no commands).",
+              "type": "string",
+              "minLength": 1
+            },
+            "images": {
+              "description": "PNG images the script loads by file name. The logo is there too, as watermark.png.",
+              "type": "array",
+              "maxItems": 24,
+              "items": {"type": "string", "minLength": 1}
+            }
+          }
         }
       }
     },
@@ -108,6 +127,13 @@
           "uniqueItems": true,
           "maxItems": 50,
           "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"}
+        },
+        "dock": {
+          "description": "Apps pinned to the dock or panel, in order, after the file manager: ids from apps or flathub (since v0.9.0).",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 12,
+          "items": {"type": "string", "minLength": 1, "maxLength": 255}
         }
       }
     },

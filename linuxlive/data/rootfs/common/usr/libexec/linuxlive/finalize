@@ -64,17 +64,24 @@ rewrite_os_release() {
 }
 
 # The theme directory already holds linuxlive.plymouth and watermark.png (the
-# logo). Borrow the spinner theme's animation frames for everything else.
+# logo). Borrow the spinner theme's animation frames for everything else,
+# unless the spec brought a splash of its own (a Plymouth script and its images).
 install_plymouth_theme() {
 	theme=/usr/share/plymouth/themes/linuxlive
 	spinner=/usr/share/plymouth/themes/spinner
-	[ -d "$spinner" ] || die "the plymouth spinner theme is missing; cannot build the boot splash"
-	for img in "$spinner"/*.png; do
-		name=${img##*/}
-		if [ "$name" != watermark.png ] && [ ! -e "$theme/$name" ]; then
-			cp "$img" "$theme/$name"
-		fi
-	done
+	if grep -qx 'ModuleName=script' "$theme/linuxlive.plymouth"; then
+		[ -f "$theme/linuxlive.script" ] || die "the boot splash's script is missing"
+		plugin=$(find /usr/lib /usr/lib64 -path '*/plymouth/script.so' -print -quit 2>/dev/null)
+		[ -n "$plugin" ] || die "Plymouth's script plugin is missing; cannot show the boot splash"
+	else
+		[ -d "$spinner" ] || die "the plymouth spinner theme is missing; cannot build the boot splash"
+		for img in "$spinner"/*.png; do
+			name=${img##*/}
+			if [ "$name" != watermark.png ] && [ ! -e "$theme/$name" ]; then
+				cp "$img" "$theme/$name"
+			fi
+		done
+	fi
 	if [ "$LL_BASE" = ubuntu ]; then
 		update-alternatives --quiet --install /usr/share/plymouth/themes/default.plymouth \
 			default.plymouth "$theme/linuxlive.plymouth" 300
@@ -173,7 +180,28 @@ brand_cinnamon() {
 	*/lightdm.service) ;;
 	*) die "display-manager.service is $(readlink -f "$unit"), not lightdm" ;;
 	esac
+	if [ -n "${LL_DOCK:-}" ]; then pin_cinnamon_panel; fi
 	log "Cinnamon wallpaper, menu logo and LightDM login configured"
+}
+
+# settings.dock on Cinnamon: the panel's grouped window list starts each new
+# user with its schema's default pinned-apps; make that the spec's list.
+pin_cinnamon_panel() {
+	schema=/usr/share/cinnamon/applets/grouped-window-list@cinnamon.org/settings-schema.json
+	[ -f "$schema" ] || die "Cinnamon's panel has no grouped window list to pin apps to ($schema)"
+	# shellcheck disable=SC2086 # LL_DOCK is a list of desktop file names
+	python3 - "$schema" $LL_DOCK <<'PY' || die "could not pin the apps to Cinnamon's panel"
+import json, sys
+path, apps = sys.argv[1], sys.argv[2:]
+with open(path, encoding="utf-8") as f:
+    data = json.load(f)
+if "pinned-apps" not in data:
+    sys.exit(f"{path} has no pinned-apps setting")
+data["pinned-apps"]["default"] = apps
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=4)
+PY
+	log "Cinnamon panel: pinned $LL_DOCK"
 }
 
 brand_kde() {

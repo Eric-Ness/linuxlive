@@ -24,6 +24,9 @@ def add_base(ctx: BuildContext, plan: Plan) -> None:
 
 def containerfile(plan: Plan) -> str:
     packages = " ".join(plan.base.system_packages)
+    if plan.spec.branding.splash:
+        # Ubuntu's plymouth package has the script plugin; Fedora's is separate.
+        packages += " plymouth-plugin-script"
     desktop = ""
     if plan.variant.packages:
         # GNOME and KDE come with their Atomic images; other desktops are

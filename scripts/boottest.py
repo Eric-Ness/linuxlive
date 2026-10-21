@@ -34,7 +34,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from linuxlive.png import read_ppm, write_png  # noqa: E402
+from linuxlive.png import read_png, read_ppm, screen_variety, write_png  # noqa: E402
+
+# A session boot also keeps a few pictures from before the session, the boot
+# splash among them: one every BOOT_SHOT_EVERY seconds until the boot check
+# starts, blank screens skipped, at most BOOT_SHOTS.
+BOOT_SHOTS = 8
+BOOT_SHOT_EVERY = 4
 
 MODES = {
     "bios-cd": ("bios", "cd"),
@@ -362,6 +368,22 @@ def screenshot(qmp: Qmp, workdir: Path, out: Path) -> bool:
         ppm.unlink(missing_ok=True)
 
 
+def boot_shot(qmp: Qmp, workdir: Path, out: Path, result: dict) -> None:
+    """Keeps a picture of the screen during the boot, unless it is blank (one colour)."""
+    name = f"boot-{len(result['boot_screenshots']) + 1}.png"
+    if not screenshot(qmp, workdir, out / name):
+        return
+    try:
+        share, colours = screen_variety(read_png(out / name), step=8)
+    except Exception as exc:  # a picture that cannot be read is not worth keeping
+        print(f"[boottest] boot screenshot unreadable: {exc}", flush=True)
+        share, colours = 1.0, 0
+    if share >= 0.97 or colours < 4:
+        (out / name).unlink(missing_ok=True)
+        return
+    result["boot_screenshots"].append(name)
+
+
 def run(args) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -409,11 +431,17 @@ def run(args) -> int:
             raise
         deadline = started + boot_timeout
         presence = Presence(qmp, active=not kvm)
+        next_boot_shot = started + BOOT_SHOT_EVERY
+        result["boot_screenshots"] = []
         while True:
             log.poll()
             if "LINUXLIVE_BOOTED" in log.markers:
                 presence.tick()
             now = time.monotonic()
+            if (args.session and now >= next_boot_shot and "LINUXLIVE_BOOTCHECK_START" not in log.markers
+                    and len(result["boot_screenshots"]) < BOOT_SHOTS):
+                next_boot_shot = now + BOOT_SHOT_EVERY
+                boot_shot(qmp, workdir, out, result)
             for marker in log.markers:
                 result["timings"].setdefault(marker, round(now - started, 1))
             if "LINUXLIVE_BOOTCHECK_START" in log.markers and deadline == started + boot_timeout:

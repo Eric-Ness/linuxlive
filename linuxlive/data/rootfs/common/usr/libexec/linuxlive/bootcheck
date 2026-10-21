@@ -80,6 +80,7 @@ for candidate in "/boot/initrd.img-$(uname -r)" "/usr/lib/modules/$(uname -r)/in
 	[ -e "$candidate" ] && initrd=$candidate && break
 done
 themes=""
+listing=""
 if [ -n "$initrd" ]; then
 	if command -v lsinitramfs >/dev/null 2>&1; then
 		listing=$(lsinitramfs "$initrd" 2>/dev/null)
@@ -89,6 +90,14 @@ if [ -n "$initrd" ]; then
 	themes=$(printf '%s\n' "$listing" | sed -n 's|.*usr/share/plymouth/themes/\([^/ ]*\)/.*|\1|p' | sort -u | tr '\n' ' ')
 fi
 fact initrd_plymouth_themes "${themes:-unknown}"
+# The splash's module (two-step, or script for a spec's own splash), the
+# linuxlive theme's files and the Plymouth plugins the initramfs carries.
+module=$(sed -n 's/^ModuleName=//p' /usr/share/plymouth/themes/linuxlive/linuxlive.plymouth 2>/dev/null | head -n 1)
+fact plymouth_module "${module:-unknown}"
+splash_files=$(printf '%s\n' "$listing" | sed -n 's|.*usr/share/plymouth/themes/linuxlive/\([^/ ]*\)$|\1|p' | sort -u | tr '\n' ' ')
+fact initrd_splash_files "${splash_files:-none}"
+plugins=$(printf '%s\n' "$listing" | sed -n 's|.*/plymouth/\([^/ ]*\)\.so$|\1|p' | sort -u | tr '\n' ' ')
+fact initrd_plymouth_plugins "${plugins:-none}"
 
 if command -v getenforce >/dev/null 2>&1; then
 	fact selinux "$(getenforce 2>/dev/null)"
@@ -333,6 +342,49 @@ kde_launcher_icons() {
 	printf '%s' "${found:-none}"
 }
 
+# The apps pinned to the user's dock or panel, as desktop file names in order:
+# GNOME's favourites, Cinnamon's grouped window list, Plasma's task manager.
+# Cinnamon and Plasma write theirs a little after login (Plasma's comes from
+# kde-apply-branding), so wait up to six minutes for the spec's first pin.
+session_dock() {
+	user=$1 shell=$2 pid=$3
+	home=$(getent passwd "$user" | cut -d: -f6)
+	# shellcheck disable=SC2154 # LL_DOCK comes from branding.env
+	want=$(. /usr/lib/linuxlive/branding.env && printf '%s' "${LL_DOCK:-}" | cut -d' ' -f2)
+	tries=0
+	while :; do
+		case $shell in
+		gnome-shell)
+			found=$(runuser -u "$user" -- env HOME="$home" XDG_CURRENT_DESKTOP="$(environ_of "$pid" XDG_CURRENT_DESKTOP)" \
+				gsettings get org.gnome.shell favorite-apps 2>/dev/null | tr -d "[]'," | sed 's/^@as //')
+			;;
+		cinnamon)
+			found=$(python3 - "$home"/.config/cinnamon/spices/grouped-window-list@cinnamon.org/*.json 2>/dev/null <<'PY'
+import json, sys
+for path in sys.argv[1:]:
+    try:
+        print(" ".join(json.load(open(path))["pinned-apps"]["value"]))
+        break
+    except Exception:
+        pass
+PY
+)
+			;;
+		plasmashell)
+			found=$(sed -n 's/^launchers=//p' "$home/.config/plasma-org.kde.plasma.desktop-appletsrc" 2>/dev/null |
+				head -n 1 | tr ',' '\n' | sed 's/^applications://' | tr '\n' ' ')
+			;;
+		*) found="" ;;
+		esac
+		found=$(printf '%s' "$found" | tr -s ' ' | sed 's/^ //; s/ $//')
+		case " $found " in *" $want "*) break ;; esac
+		tries=$((tries + 1))
+		[ "$tries" -ge 180 ] && break
+		sleep 2
+	done
+	printf '%s' "${found:-none}"
+}
+
 # The layout the session types with: GNOME's own list, Plasma's kxkbrc, the
 # X server's (Cinnamon) or Cage's (kiosk mode, from its environment).
 session_keyboard() {
@@ -534,6 +586,10 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		fi
 		if [ "$shell" = plasmashell ]; then
 			fact kde_launcher_icon "$(kde_launcher_icons "$user")"
+		fi
+		# The dock only when the spec sets one: waiting for a default dock would only cost time.
+		if grep -q '^LL_DOCK=' /usr/lib/linuxlive/branding.env 2>/dev/null; then
+			fact dock_apps "$(session_dock "$user" "$shell" "$(pgrep -u "$user" -x "$shell" 2>/dev/null | head -n 1)")"
 		fi
 		fact failed_units "$(failed_units)"
 		# The distro's first-boot scripts ran before the login screen (installed systems).

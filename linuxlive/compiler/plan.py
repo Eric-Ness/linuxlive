@@ -26,6 +26,8 @@ GNOME_ACCENTS = {
 
 WALLPAPER_DIR = "/usr/share/backgrounds/linuxlive"
 LOGO_NAME = "linuxlive-logo"
+# Each desktop's file manager, always first on a dock the spec sets (settings.dock).
+FILE_MANAGERS = {"gnome": "org.gnome.Nautilus.desktop", "kde": "org.kde.dolphin.desktop", "cinnamon": "nemo.desktop"}
 MARKER_DIR = ".disk"
 
 
@@ -85,6 +87,15 @@ class Plan:
     @property
     def wallpaper_path(self) -> str:
         return f"{WALLPAPER_DIR}/{self.wallpaper_file}"
+
+    @property
+    def dock(self) -> tuple[str, ...]:
+        """The dock's (or panel's) pinned apps as desktop file names: the file
+        manager, then the spec's settings.dock in order. Empty: the desktop's own."""
+        if not self.spec.settings.dock:
+            return ()
+        by_id = {app.id: app for app in self.apps}
+        return (FILE_MANAGERS[self.desktop.id],) + tuple(f"{by_id[a].flatpak}.desktop" for a in self.spec.settings.dock)
 
     @property
     def base_image(self) -> str:
