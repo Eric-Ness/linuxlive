@@ -309,6 +309,51 @@ def hue_fraction(
     return matched / total if total else 0.0
 
 
+def colour_palette(image: Image, *, step: int = 4, cover: float = 0.9, limit: int = 32) -> list[tuple[float, float, float]]:
+    """The colours that make up most of an image: the mean of each of its
+    fullest 16-level RGB buckets, in order, until they cover ``cover`` of the
+    sampled pixels (at most ``limit`` colours).
+
+    For pale or grey wallpapers, which have no dominant hue to look for.
+    """
+    buckets: dict[tuple[int, int, int], list[int]] = {}
+    total = 0
+    for r, g, b in _samples(image, step):
+        total += 1
+        acc = buckets.setdefault((r >> 4, g >> 4, b >> 4), [0, 0, 0, 0])
+        acc[0] += 1
+        acc[1] += r
+        acc[2] += g
+        acc[3] += b
+    palette: list[tuple[float, float, float]] = []
+    covered = 0
+    for n, sr, sg, sb in sorted(buckets.values(), key=lambda a: -a[0]):
+        palette.append((sr / n, sg / n, sb / n))
+        covered += n
+        if covered >= cover * total or len(palette) >= limit:
+            break
+    return palette
+
+
+def palette_fraction(image: Image, palette: list[tuple[float, float, float]], *, tolerance: float = 12.0, step: int = 4) -> float:
+    """Fraction of sampled pixels within ``tolerance`` (RGB distance) of a
+    palette colour. Pure white, which windows and menus are made of, counts
+    only when the palette itself has pure white in it.
+    """
+    tol2 = tolerance * tolerance
+    has_white = any(min(c) >= 250 for c in palette)
+    total = matched = 0
+    for r, g, b in _samples(image, step):
+        total += 1
+        if not has_white and r >= 252 and g >= 252 and b >= 252:
+            continue
+        for pr, pg, pb in palette:
+            if (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2 <= tol2:
+                matched += 1
+                break
+    return matched / total if total else 0.0
+
+
 def screen_variety(image: Image, *, step: int = 4) -> tuple[float, int]:
     """How much is on screen: the share of sampled pixels in the commonest colour,
     and how many colours there are, with each channel cut to 16 levels.

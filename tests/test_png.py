@@ -9,10 +9,12 @@ import pytest
 from linuxlive.png import (
     Image,
     ImageError,
+    colour_palette,
     dominant_hue,
     hue_distance,
     hue_fraction,
     image_info,
+    palette_fraction,
     read_png,
     read_ppm,
     write_png,
@@ -140,3 +142,33 @@ def test_hue_distance_wraps_around():
     assert hue_distance(350, 10) == 20
     assert hue_distance(10, 350) == 20
     assert hue_distance(180, 0) == 180
+
+
+def pale_noise(seed=7, width=160, height=100):
+    """A pale blue-white wallpaper with a little grain, like a quiet waterfall."""
+    rng = random.Random(seed)
+    px = bytearray()
+    for _ in range(width * height):
+        v = rng.randint(-6, 6)
+        px += bytes((236 + v, 242 + v, 247 + v))
+    return Image(width, height, bytes(px))
+
+
+def test_colour_palette_of_a_solid_colour():
+    palette = colour_palette(solid(PINK))
+    assert len(palette) == 1 and all(abs(a - b) < 0.5 for a, b in zip(palette[0], PINK))
+
+
+def test_palette_matches_a_pale_wallpaper_and_nothing_else():
+    wall = pale_noise()
+    assert dominant_hue(wall) is None  # too pale for the hue check
+    palette = colour_palette(wall)
+    assert palette_fraction(pale_noise(seed=8), palette) > 0.9
+    for other in [(233, 84, 32), (44, 0, 30), (30, 30, 30), (40, 90, 210)]:
+        assert palette_fraction(solid(other), palette) == 0, other
+
+
+def test_palette_ignores_white_windows_unless_the_wallpaper_is_white():
+    white = solid((255, 255, 255))
+    assert palette_fraction(white, colour_palette(pale_noise())) == 0
+    assert palette_fraction(white, colour_palette(white)) == 1.0

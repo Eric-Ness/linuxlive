@@ -23,7 +23,7 @@ from linuxlive.catalog import Catalog, load_catalog
 from linuxlive.compiler.extras import file_sha256, script_names
 from linuxlive.compiler.options import KIOSK_USER, firefox_policies_text
 from linuxlive.compiler.plan import LOGO_NAME, Plan, plan_build
-from linuxlive.png import ImageError, dominant_hue, hue_fraction, image_info, read_png, screen_variety
+from linuxlive.png import ImageError, colour_palette, dominant_hue, hue_fraction, image_info, palette_fraction, read_png, screen_variety
 from linuxlive.spec import Spec
 
 CHECKS = ("iso", "boot", "session", "install", "persistence")
@@ -31,6 +31,14 @@ BOOT_MODES = ("bios-cd", "uefi-cd", "uefi-sb-cd", "bios-usb", "uefi-usb")
 SECURE_BOOT_MODE = "uefi-sb-cd"
 SESSION_MODE = "uefi-usb"
 HUE_THRESHOLD = 0.25
+# A pale or grey wallpaper has too little colour for the hue check: when its own
+# dominant hue covers less than PALE_SELF of itself, the screenshot is matched
+# against its main colours instead, which must cover PALETTE_THRESHOLD of it.
+PALE_SELF = 0.4
+PALETTE_THRESHOLD = 0.5
+# Names Ubuntu and Fedora may report for the same zone as the spec's.
+ZONE_ALIASES = {"UTC": "Etc/UTC", "Universal": "Etc/UTC", "Zulu": "Etc/UTC", "UCT": "Etc/UTC",
+                "Etc/Universal": "Etc/UTC", "Etc/Zulu": "Etc/UTC", "Etc/UCT": "Etc/UTC"}
 # Kiosk mode shows an app, not the wallpaper: its screenshots must not be blank
 # (one colour over nearly all of the screen, or hardly any colours at all).
 BLANK_SHARE = 0.97
@@ -171,6 +179,23 @@ def wallpaper_hue(spec: Spec) -> float:
     return hue
 
 
+def wallpaper_reference(spec: Spec) -> tuple[str, float | list[tuple[float, float, float]]]:
+    """What to look for in the screenshots: ("hue", degrees) for a colourful
+    wallpaper, or ("palette", its main colours) for a pale or grey one."""
+    fmt, _w, _h = image_info(spec.branding.wallpaper)
+    if fmt != "png":
+        raise ImageError("the screenshot check needs a PNG wallpaper to measure its colour")
+    image = read_png(spec.branding.wallpaper)
+    hue = dominant_hue(image)
+    if hue is not None and hue_fraction(image, hue) >= PALE_SELF:
+        return "hue", hue
+    return "palette", colour_palette(image)
+
+
+def _same_zone(a: str | None, b: str) -> bool:
+    return bool(a) and ZONE_ALIASES.get(a, a) == ZONE_ALIASES.get(b, b)
+
+
 def _check_upstream_branding(c: _Collector, plan: Plan, result: dict) -> None:
     """Ubuntu's and Fedora's logos are their trademarks; the distro shows its own."""
     spec = plan.spec
@@ -262,7 +287,7 @@ def _check_settings(c: _Collector, plan: Plan, result: dict, where: str, *, live
             translation = _fact(result, "shell_translation") or ""
             c.expect(translation.startswith("/"), f"{where}the desktop shell has its words in {s.language} (catalog: {translation!r})")
     if s.timezone:
-        c.expect(_fact(result, "timezone") == s.timezone, f"{where}time zone is {_fact(result, 'timezone')!r}, expected {s.timezone!r}")
+        c.expect(_same_zone(_fact(result, "timezone"), s.timezone), f"{where}time zone is {_fact(result, 'timezone')!r}, expected {s.timezone!r}")
     if s.keyboard:
         c.expect(_fact(result, "keyboard_system") == s.keyboard, f"{where}system keyboard layout is {_fact(result, 'keyboard_system')!r}, expected {s.keyboard!r}")
         c.expect(_fact(result, "keyboard_session") == s.keyboard, f"{where}the session types with layout {_fact(result, 'keyboard_session')!r}, expected {s.keyboard!r}")
@@ -298,7 +323,7 @@ def _check_flatpak_runs(c: _Collector, plan: Plan, result: dict, where: str) -> 
         c.expect(got == "ok", f"{where}Flatpak {app.flatpak} ({app.name}) starts in the session ({got!r})")
 
 
-def _check_not_blank(c: _Collector, mode_dir: Path, result: dict) -> None:
+def _check_not_blank(c: _Collector, mode_dir: Path, result: dict, what: str = "the kiosk's screen") -> None:
     best = None
     measured = []
     for name in result.get("screenshots") or []:
@@ -310,7 +335,7 @@ def _check_not_blank(c: _Collector, mode_dir: Path, result: dict) -> None:
         measured.append(f"{name}: {share:.0%} one colour, {colours} colours")
         if share < BLANK_SHARE and colours >= MIN_COLOURS:
             best = name
-    c.expect(best is not None, f"the kiosk's screen shows something (needs under {BLANK_SHARE:.0%} one colour and {MIN_COLOURS}+ colours; "
+    c.expect(best is not None, f"{what} shows something (needs under {BLANK_SHARE:.0%} one colour and {MIN_COLOURS}+ colours; "
              f"measured {', '.join(measured) or 'no screenshots'})")
 
 
@@ -408,25 +433,30 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
         return c.outcomes
 
     try:
-        hue = wallpaper_hue(spec)
+        kind, ref = wallpaper_reference(spec)
     except (ImageError, OSError) as exc:
         c.expect(False, f"could not measure the wallpaper: {exc}")
         return c.outcomes
+    if kind == "palette":
+        # A flat pale screen would match a pale palette too; the desktop must show more.
+        _check_not_blank(c, mode_dir, result, "the desktop")
     best = 0.0
     measured = []
     for name in result.get("screenshots") or []:
         try:
-            fraction = hue_fraction(read_png(mode_dir / name), hue)
+            shot = read_png(mode_dir / name)
+            fraction = hue_fraction(shot, ref) if kind == "hue" else palette_fraction(shot, ref)  # type: ignore[arg-type]
         except (ImageError, OSError) as exc:
             c.expect(False, f"screenshot {name} is unreadable: {exc}")
             continue
         measured.append(f"{name}={fraction:.2f}")
         best = max(best, fraction)
-    c.expect(
-        best >= HUE_THRESHOLD,
-        f"wallpaper hue {hue:.0f} deg covers {best:.0%} of the best screenshot "
-        f"(needs {HUE_THRESHOLD:.0%}; measured {', '.join(measured) or 'no screenshots'})",
-    )
+    seen = ', '.join(measured) or 'no screenshots'
+    if kind == "hue":
+        c.expect(best >= HUE_THRESHOLD, f"wallpaper hue {ref:.0f} deg covers {best:.0%} of the best screenshot (needs {HUE_THRESHOLD:.0%}; measured {seen})")
+    else:
+        c.expect(best >= PALETTE_THRESHOLD, f"the pale wallpaper's {len(ref)} main colours cover {best:.0%} of the best screenshot "  # type: ignore[arg-type]
+                 f"(needs {PALETTE_THRESHOLD:.0%}; measured {seen})")
     return c.outcomes
 
 

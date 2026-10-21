@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
+import random
 from pathlib import Path
 
 import pytest
 
 from linuxlive.spec import load_spec
-from linuxlive.verify import BOOT_MODES, SECURE_BOOT_MODE, SESSION_MODE, verify_results
+from linuxlive.png import Image, write_png
+from linuxlive.verify import BOOT_MODES, SECURE_BOOT_MODE, SESSION_MODE, _same_zone, verify_results
 from tests.conftest import EXAMPLES, PINK, solid_png
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
@@ -442,3 +445,52 @@ def test_fedora_live_desktop_needs_the_installer(tmp_path):
     results = make_results(tmp_path / "r", "fedora")
     edit_json(results / f"modes/{SESSION_MODE}/result.json", lambda d: d["facts"].update(installer_icon=["menu-only"]))
     assert any("the live desktop shows the installer" in f for f in failures(verify_results(load("fedora"), results, ["session"], expect_commit=COMMIT)))
+
+
+def pale_desktop(path: Path, seed: int, *, icons: bool = True) -> Path:
+    """A pale, grainy wallpaper; with icons, as a desktop shows it (a dark top
+    bar and a row of coloured icons)."""
+    rng = random.Random(seed)
+    w, h = 160, 100
+    px = bytearray()
+    for y in range(h):
+        for x in range(w):
+            v = rng.randint(-6, 6)
+            rgb = (236 + v, 242 + v, 247 + v)
+            if icons and y < 6:
+                rgb = (30, 30, 30)
+            elif icons and 10 <= y < 18 and x < 120 and (x // 8) % 2 == 0:
+                rgb = ((x * 37) % 256, (x * 91) % 256, (y * 53) % 256)
+            px += bytes(rgb)
+    write_png(path, Image(w, h, bytes(px)))
+    return path
+
+
+def pale_spec(tmp_path):
+    spec = load()
+    wall = pale_desktop(tmp_path / "pale.png", seed=1, icons=False)
+    return dataclasses.replace(spec, branding=dataclasses.replace(spec.branding, wallpaper=wall))
+
+
+def test_a_pale_wallpaper_is_matched_by_its_colours(tmp_path):
+    results = make_results(tmp_path / "r")
+    pale_desktop(results / "modes" / SESSION_MODE / "screenshot-1.png", seed=2)
+    outcomes = verify_results(pale_spec(tmp_path), results, expect_commit=COMMIT)
+    assert not failures(outcomes), failures(outcomes)
+    assert any("pale wallpaper" in o.detail and o.ok for o in outcomes)
+
+
+@pytest.mark.parametrize(("make", "expected"), [
+    (lambda p: solid_png(p, 160, 100, (233, 84, 32)), "main colours cover 0%"),     # Ubuntu's own wallpaper
+    (lambda p: solid_png(p, 160, 100, (240, 244, 248)), "the desktop shows something"),  # a flat pale screen
+])
+def test_a_pale_wallpaper_still_catches_a_wrong_screen(tmp_path, make, expected):
+    results = make_results(tmp_path / "r")
+    make(results / "modes" / SESSION_MODE / "screenshot-1.png")
+    found = failures(verify_results(pale_spec(tmp_path), results, expect_commit=COMMIT))
+    assert any(expected in f for f in found), found
+
+
+def test_utc_has_more_than_one_name():
+    assert _same_zone("Etc/UTC", "UTC") and _same_zone("UTC", "Etc/UTC") and _same_zone("Europe/Madrid", "Europe/Madrid")
+    assert not _same_zone("Europe/London", "UTC") and not _same_zone(None, "UTC")
