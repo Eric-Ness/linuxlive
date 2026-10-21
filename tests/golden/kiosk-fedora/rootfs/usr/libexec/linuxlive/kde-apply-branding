@@ -43,6 +43,28 @@ if (found === 0) throw new Error('no application launcher yet');
 "
 }
 
+# settings.dock: pins the spec's apps (LL_DOCK, desktop file names) to the
+# panel's task manager, in order. Fails, and is retried, until the panel has one.
+set_task_manager_launchers() {
+	launchers=""
+	for app in $LL_DOCK; do
+		launchers="${launchers:+$launchers, }'applications:$app'"
+	done
+	busctl --user call org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell evaluateScript s "
+var found = 0;
+panels().forEach(function (panel) {
+	panel.widgets().forEach(function (widget) {
+		if (['org.kde.plasma.icontasks', 'org.kde.plasma.taskmanager'].indexOf(widget.type) < 0) return;
+		widget.currentConfigGroup = ['General'];
+		widget.writeConfig('launchers', [$launchers]);
+		if (typeof widget.reloadConfig === 'function') widget.reloadConfig();
+		found += 1;
+	});
+});
+if (found === 0) throw new Error('no task manager yet');
+"
+}
+
 mark() {
 	mkdir -p "$config"
 	: >"$config/$1"
@@ -62,6 +84,14 @@ if [ ! -e "$config/linuxlive-launcher-applied" ]; then
 		mark linuxlive-launcher-applied
 	else
 		echo "linuxlive: could not set the launcher icon" >&2
+		status=1
+	fi
+fi
+if [ -n "${LL_DOCK:-}" ] && [ ! -e "$config/linuxlive-dock-applied" ]; then
+	if retry set_task_manager_launchers; then
+		mark linuxlive-dock-applied
+	else
+		echo "linuxlive: could not pin the apps to the panel" >&2
 		status=1
 	fi
 fi
