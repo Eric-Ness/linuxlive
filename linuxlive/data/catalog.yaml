@@ -80,9 +80,12 @@ desktops:
     # Fedora has no Cinnamon Atomic image, so Cinnamon goes onto base-atomic,
     # the image Silverblue and Kinoite are built from. dnf in bootc images may
     # skip weak dependencies, so the recommended pieces are named too.
+    # base-atomic has CUPS, and cinnamon requires its client (lpstat, lpq, lp,
+    # cancel); system-config-printer, which the applet and System Settings'
+    # Printers open, and cups-pk-helper come with Fedora's own Cinnamon spin.
     fedora:
       image: quay.io/fedora-ostree-desktops/base-atomic:44
-      packages: [cinnamon, cinnamon-control-center, lightdm, slick-greeter, xorg-x11-drv-libinput, gnome-terminal, gnome-software, flatpak]
+      packages: [cinnamon, cinnamon-control-center, lightdm, slick-greeter, xorg-x11-drv-libinput, gnome-terminal, gnome-software, flatpak, system-config-printer, cups-pk-helper]
       livesys_session: cinnamon
 
 # Apps are installed from Flathub, so one ID works on every base. kiosk_args

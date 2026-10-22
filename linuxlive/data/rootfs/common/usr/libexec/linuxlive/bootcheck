@@ -144,6 +144,17 @@ if [ -e "$yaru/view-app-grid-ubuntu-symbolic.svg" ]; then
 		fact dock_show_apps_icon ubuntu
 	fi
 fi
+# The programs Cinnamon's printers applet runs (6.4 runs lpq, 6.6 lpstat for
+# it). Without lpstat its helper, lpstat-a.py, dies at every login, which only
+# Ubuntu's apport reports; elsewhere it is silent.
+if [ -d /usr/share/cinnamon/applets/printers@cinnamon.org ]; then
+	missing=""
+	for cmd in lpstat lpq lp cancel system-config-printer; do
+		command -v "$cmd" >/dev/null 2>&1 || missing="$missing $cmd"
+	done
+	missing=${missing# }
+	fact printer_commands_missing "${missing:-none}"
+fi
 # The spec's settings (settings, firefox, kiosk), as the system has them.
 # shellcheck disable=SC2154 # LL_* settings come from /usr/lib/linuxlive/branding.env
 settings=$(. /usr/lib/linuxlive/branding.env && printf '%s\n%s\n%s\n' "${LL_HIDDEN_APPS:-}" "${LL_KIOSK_APP:-}" "${LL_KIOSK_USER:-}")
