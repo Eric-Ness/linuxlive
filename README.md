@@ -13,7 +13,8 @@ template [Eric-Ness/linuxlive-distro](https://github.com/Eric-Ness/linuxlive-dis
 click **Use this template**, edit `linuxlive.yaml`, swap in your art and push.
 GitHub Actions builds the ISO, boots it five ways and checks it, through this
 repository's reusable workflow. The
-[wiki](https://github.com/Eric-Ness/linuxlive/wiki) walks through it.
+[docs at docs.linuxlive.com](https://docs.linuxlive.com/) walk through it, with the full
+[spec reference](https://docs.linuxlive.com/spec/reference/).
 
 ## A spec
 
