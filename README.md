@@ -70,7 +70,12 @@ own CI job: `build` for amd64 as always, `build arm64` on GitHub's arm64
 runners. ARM64 ISOs boot through UEFI only (ARM has no BIOS) and are meant
 for virtual machines on Apple-silicon Macs: UTM, Parallels, VMware Fusion.
 GitHub's arm64 runners have no KVM, so their boot tests run emulated (QEMU's
-TCG, with longer timeouts); everything else is checked as on amd64.
+TCG, with longer timeouts); everything else is checked as on amd64. The
+emulated CPU is a Neoverse N1, which runs the same NEON code as Apple-silicon
+Macs and is the fastest to emulate. It has no pointer authentication, so the
+instructions for it run as no-ops. It isn't QEMU's `max`, because on the
+runners' QEMU 8.2 gnome-shell crashed minutes after login on it, in a memset
+that used the newer CPU's memory-copy instructions (MOPS).
 
 Apps in `flathub` are checked against Flathub's API by `validate --online`,
 which the build workflow runs first: each must exist, be an app (not a
@@ -163,11 +168,11 @@ python -m linuxlive validate examples/testos-ubuntu.yaml
    ships a small service, `linuxlive-bootcheck`, that reports to the serial
    port when (and only when) QEMU passes a test flag: OS name, firmware,
    Secure Boot state, installed Flatpaks, boot splash, desktop shell, failed
-   system services and update notifiers.
+   system services, crashed programs and update notifiers.
 5. **Verify.** `python -m linuxlive verify-results` checks those reports and
    the screenshots against the spec. A run that boots the wrong name, the
-   upstream boot splash, a failed system service or a desktop without the
-   spec's wallpaper fails.
+   upstream boot splash, a failed system service, a crash in the live session
+   or a desktop without the spec's wallpaper fails.
 
 When booted from the ISO, a live-only service, `linuxlive-live`, turns off
 update notifiers (nothing installed in a live session survives shutdown) and

@@ -49,7 +49,7 @@ RUN set -eux; \
 # Desktop: Cinnamon.
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y cinnamon-core lightdm slick-greeter xserver-xorg gnome-software gnome-software-plugin-flatpak; \
+    apt-get install -y cinnamon-core lightdm slick-greeter xserver-xorg cups cups-bsd system-config-printer gnome-software gnome-software-plugin-flatpak; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 

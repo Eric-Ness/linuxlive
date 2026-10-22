@@ -301,6 +301,8 @@ def example_results(root: Path, name: str, persistence: bool = True) -> tuple[ob
                 f["issue"] = [f"{spec.name} {spec.version} \\n \\l"]
             for key in ("extra_package", "extra_file", "user_build", "first_login_script", "first_boot_script", "kde_launcher_icon", "plasma_welcome_installer"):
                 f.pop(key, None)
+            if spec.desktop == "cinnamon":
+                f["printer_commands_missing"] = ["none"]
             if d.get("outcome") != "session":
                 return
             f.update(shell=[shell], shell_after_settle=[shell], shell_watch=[shell], flatpak_runs=[f"{a.flatpak}=ok" for a in plan.apps])
@@ -394,6 +396,11 @@ def _fact(results: Path, mode: str, key: str, value) -> None:
          "the dock pins 'org.kde.dolphin.desktop org.kde.kcalc.desktop org.mozilla.firefox.desktop'"),
         ("settings-cinnamon", SESSION_MODE, "dock_apps", [], "the dock pins 'nemo.desktop org.gnome.Chess.desktop org.videolan.VLC.desktop' (found None)"),
         ("settings-ubuntu", "installed-uefi-sb", "dock_apps", ["none"], "installed-uefi-sb: the dock pins"),
+        (
+            "settings-cinnamon", SESSION_MODE, "printer_commands_missing", ["lpstat system-config-printer"],
+            "programs Cinnamon's printers applet runs, missing: 'lpstat system-config-printer', expected 'none'",
+        ),
+        ("settings-cinnamon", SESSION_MODE, "printer_commands_missing", [], "programs Cinnamon's printers applet runs, missing: None"),
         ("kiosk-ubuntu", SESSION_MODE, "desktop_shells", ["gnome-shell"], "kiosk mode runs no desktop shell (running: 'gnome-shell')"),
         ("kiosk-ubuntu", SESSION_MODE, "kiosk_apps", ["none"], "kiosk mode shows org.mozilla.firefox"),
         ("kiosk-ubuntu", SESSION_MODE, "shell", ["gnome-shell"], "desktop shell is 'gnome-shell', expected 'cage'"),

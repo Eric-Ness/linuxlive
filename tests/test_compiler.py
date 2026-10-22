@@ -368,6 +368,8 @@ def test_fedora_installs_cinnamon_onto_base_atomic(workspace):
     assert "FROM quay.io/fedora-ostree-desktops/base-atomic:44" in containerfile
     assert f"dnf -y install {' '.join(plan.variant.packages)};" in containerfile
     assert {"cinnamon", "lightdm", "slick-greeter"} <= set(plan.variant.packages)
+    # The printers applet's settings window; base-atomic has CUPS itself.
+    assert "system-config-printer" in plan.variant.packages
     # The desktop goes in before the branding that configures it.
     assert containerfile.index("# Desktop: Cinnamon.") < containerfile.index("COPY rootfs/ /")
     assert 'livesys_session="cinnamon"' in text(cinnamon, "rootfs/etc/sysconfig/livesys")

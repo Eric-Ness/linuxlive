@@ -236,6 +236,10 @@ def _check_live_session(c: _Collector, plan: Plan, result: dict) -> None:
             installer is not None and not installer.startswith("missing:"),
             f"Plasma Welcome offers installer {installer!r}, which must exist or be 'none'",
         )
+    if plan.desktop.id == "cinnamon":
+        # The panel's printers applet runs them; without lpstat its helper dies at every login.
+        missing = _fact(result, "printer_commands_missing")
+        c.expect(missing == "none", f"programs Cinnamon's printers applet runs, missing: {missing!r}, expected 'none'")
     if plan.base.id == "ubuntu":
         # The last report wins; "running" means it had not finished when the VM stopped.
         verdicts = _facts(result, "casper_md5check")
@@ -405,6 +409,17 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
         + ")"
         + (f"; session errors: {' | '.join(errors)}" if errors and crashed is not None else ""),
     )
+    # One that crashed and came back (the user logged in again) is running too, as another process.
+    restarted = _fact(result, "shell_restarted")
+    c.expect(
+        restarted is None,
+        "desktop shell is still the one that started at login"
+        + (f" (restarted: {restarted})" if restarted else "")
+        + (f"; session errors: {' | '.join(errors)}" if errors and restarted else ""),
+    )
+    # Ubuntu tells the user about each one ("... has experienced an internal error").
+    crashes = _facts(result, "crash_report")
+    c.expect(not crashes, "nothing crashed in the live session" + (f" (crash reports: {' | '.join(crashes)})" if crashes else ""))
     c.expect(
         _fact(result, "plymouth_theme") == "linuxlive",
         f"Plymouth theme is {_fact(result, 'plymouth_theme')!r}, expected 'linuxlive'",

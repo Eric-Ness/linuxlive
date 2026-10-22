@@ -12,7 +12,7 @@ RUN set -eux; \
 
 # Desktop: Cinnamon.
 RUN set -eux; \
-    dnf -y install cinnamon cinnamon-control-center lightdm slick-greeter xorg-x11-drv-libinput gnome-terminal gnome-software flatpak; \
+    dnf -y install cinnamon cinnamon-control-center lightdm slick-greeter xorg-x11-drv-libinput gnome-terminal gnome-software flatpak system-config-printer cups-pk-helper; \
     dnf clean all
 
 # Fedora's logos are Fedora's trademarks; a distro that isn't Fedora uses

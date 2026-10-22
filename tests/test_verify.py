@@ -298,6 +298,33 @@ BREAKS = {
         lambda d: d["facts"].update(shell_crashed=["64"], session_error=["systemd-coredump[990]: Process 812 (cinnamon) of user 999 dumped core."]),
         "desktop shell kept running until the test ended (watched: 'gnome-shell', crashed 64 s after login); session errors: systemd-coredump",
     ),
+    "shell crashed and came back": (
+        f"modes/{SESSION_MODE}/result.json",
+        lambda d: d["facts"].update(shell_restarted=["pid 1830 at login, 2711 30 s later"], session_error=["gnome-shell[1830]: segfault at 0"]),
+        "desktop shell is still the one that started at login (restarted: pid 1830 at login, 2711 30 s later); session errors: gnome-shell[1830]",
+    ),
+    "the shell left a crash report": (
+        *_set_fact(SESSION_MODE, "crash_report", [
+            "_usr_bin_gnome-shell.999.crash: ExecutablePath: /usr/bin/gnome-shell",
+            "_usr_bin_gnome-shell.999.crash: Signal: 11",
+        ]),
+        "nothing crashed in the live session (crash reports: _usr_bin_gnome-shell.999.crash: ExecutablePath: /usr/bin/gnome-shell"
+        " | _usr_bin_gnome-shell.999.crash: Signal: 11)",
+    ),
+    # Any program's crash fails the session, not just the shell's: Ubuntu shows each one to the user.
+    "another program's script crashed": (
+        *_set_fact(SESSION_MODE, "crash_report", [
+            "_usr_share_cinnamon_applets_printers@cinnamon.org_lpstat-a.py.999.crash: ExecutablePath: /usr/share/cinnamon/applets/printers@cinnamon.org/lpstat-a.py",
+            "_usr_share_cinnamon_applets_printers@cinnamon.org_lpstat-a.py.999.crash: Exception: FileNotFoundError: [Errno 2] No such file or directory: '/usr/bin/lpstat'",
+        ]),
+        "nothing crashed in the live session (crash reports: _usr_share_cinnamon_applets_printers@cinnamon.org_lpstat-a.py.999.crash:"
+        " ExecutablePath: /usr/share/cinnamon/applets/printers@cinnamon.org/lpstat-a.py"
+        " | _usr_share_cinnamon_applets_printers@cinnamon.org_lpstat-a.py.999.crash: Exception: FileNotFoundError",
+    ),
+    "another program dumped core": (
+        *_set_fact(SESSION_MODE, "crash_report", ["systemd-coredump: Process 2051 (tracker-miner-f) of user 999 dumped core."]),
+        "nothing crashed in the live session (crash reports: systemd-coredump: Process 2051 (tracker-miner-f) of user 999 dumped core.)",
+    ),
     "shell not watched": (
         *_set_fact(SESSION_MODE, "shell_watch", []),
         "desktop shell kept running until the test ended (watched: None)",
