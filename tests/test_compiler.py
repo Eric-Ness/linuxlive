@@ -202,6 +202,18 @@ def test_kernel_arguments_match_the_live_layout(workspace):
         assert "configfile $prefix/grub.cfg" in text(ctx, "iso/efi-grub.cfg")
 
 
+@pytest.mark.parametrize("base", ["ubuntu", "fedora"])
+def test_bios_boots_start_linux_in_a_graphical_mode_for_the_splash(workspace, base):
+    ctx, _ = build_context(load_spec(write_spec(workspace, spec_data(base=base))))
+    menu = text(ctx, "iso/boot/grub/grub.cfg")
+    # Only on BIOS (UEFI firmware already hands Linux a graphical screen), before any entry.
+    bios = menu.index('if [ "$grub_platform" = "pc" ]; then\n\tinsmod all_video\n\tset gfxpayload=auto\nfi')
+    assert bios < menu.index("menuentry ")
+    # Safe graphics keeps text, as nomodeset means.
+    safe = menu[menu.index("(safe graphics)"):]
+    assert safe.index("set gfxpayload=text") < safe.index("nomodeset")
+
+
 def test_names_with_spaces_are_quoted_for_the_shell(workspace):
     ctx, _ = build_context(load_spec(write_spec(workspace, spec_data(name="My Distro", id="my-distro"))))
     assert parse_env(text(ctx, "iso.env"))["LL_NAME"] == "My Distro"

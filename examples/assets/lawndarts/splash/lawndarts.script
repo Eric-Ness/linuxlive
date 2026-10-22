@@ -2,32 +2,45 @@
 # middle of a grass-green screen, a lawn dart arcs across below it again and
 # again, and a bar under the logo fills as the computer starts. The images are
 # from scripts/make_splash_example.py; watermark.png is the spec's logo.
+#
+# The screen can change size partway through the boot (when the graphics
+# driver takes over from the firmware's screen), so the layout is worked out
+# again whenever it does.
 
 Window.SetBackgroundTopColor(0.184, 0.420, 0.165);
 Window.SetBackgroundBottomColor(0.184, 0.420, 0.165);
-sw = Window.GetWidth();
-sh = Window.GetHeight();
 
 logo_image = Image("watermark.png");
 logo = Sprite(logo_image);
-logo.SetPosition(sw / 2 - logo_image.GetWidth() / 2, sh * 0.42 - logo_image.GetHeight() / 2, 10);
-
 bar_bg_image = Image("bar-bg.png");
 bar_image = Image("bar.png");
-bar_x = sw / 2 - bar_bg_image.GetWidth() / 2;
-bar_y = sh * 0.42 + logo_image.GetHeight() / 2 + 28;
 bar_bg = Sprite(bar_bg_image);
-bar_bg.SetPosition(bar_x, bar_y, 10);
 bar = Sprite();
-bar.SetPosition(bar_x, bar_y, 11);
-
-# The dart flies left to right in an arc, once every 150 refreshes (about 3 s).
 dart_image = Image("dart.png");
 dart = Sprite(dart_image);
 dart.SetZ(20);
+message = Sprite();
+message.SetZ(30);
+progress = 0;
 flight = 0;
+sw = 0;
+sh = 0;
 
+fun layout() {
+    sw = Window.GetWidth();
+    sh = Window.GetHeight();
+    logo.SetPosition(sw / 2 - logo_image.GetWidth() / 2, sh * 0.42 - logo_image.GetHeight() / 2, 10);
+    bar_x = sw / 2 - bar_bg_image.GetWidth() / 2;
+    bar_y = sh * 0.42 + logo_image.GetHeight() / 2 + 28;
+    bar_bg.SetPosition(bar_x, bar_y, 10);
+    bar.SetPosition(bar_x, bar_y, 11);
+    message.SetY(bar_y + 40);
+}
+layout();
+
+# The dart flies left to right in an arc, once every 150 refreshes (about 3 s).
 fun refresh_callback() {
+    if (Window.GetWidth() != sw || Window.GetHeight() != sh) layout();
     flight = flight + 1;
     if (flight > 150) flight = 0;
     along = flight / 150;
@@ -44,8 +57,6 @@ fun progress_callback(duration, progress) {
 Plymouth.SetBootProgressFunction(progress_callback);
 
 # Messages and password prompts (for example a disk check), under the bar.
-message = Sprite();
-message.SetPosition(sw / 2, bar_y + 40, 30);
 fun message_callback(text) {
     image = Image.Text(text, 1, 1, 1);
     message.SetImage(image);

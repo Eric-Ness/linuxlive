@@ -230,12 +230,22 @@ set default=0
 set timeout=5
 set timeout_style=menu
 
+# BIOS PCs (and VMs in BIOS mode) start Linux in text mode, so the boot splash
+# has nothing to draw on until the graphics driver loads; start it in a
+# graphical mode instead. UEFI firmware hands Linux one already. Safe graphics
+# keeps text.
+if [ "$grub_platform" = "pc" ]; then
+	insmod all_video
+	set gfxpayload=auto
+fi
+
 menuentry '{try_label}' --id try {{
 	linux {kernel} {try_args}
 	initrd {initrd}
 }}
 {fresh_entry}{install_entry}
 menuentry 'Try {title} (safe graphics)' --id safe {{
+	set gfxpayload=text
 	linux {kernel} nomodeset {try_args}
 	initrd {initrd}
 }}

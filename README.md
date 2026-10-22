@@ -96,7 +96,12 @@ does not stop "Build it for me". Limits: a UTF-8 script of at most 64 KB, up
 to 24 PNG images named with letters, digits, `.`, `_` and `-`, 8 MB in all,
 since the splash rides in the initramfs that every boot loads first. On
 Fedora the build adds `plymouth-plugin-script`; Ubuntu's `plymouth` has it.
-Text-mode boots (no early graphics) still show the text splash. CI boots
+On BIOS the boot menu starts Linux in a graphical mode (since v0.9.1), so the
+splash shows there as on UEFI; "safe graphics" and machines without early
+graphics show the text splash. The screen can change size partway through
+the boot, when the graphics driver takes over from the firmware's screen, so
+a script should lay itself out again when `Window.GetWidth()` or
+`Window.GetHeight()` changes, as the example does. CI boots
 both Lawn Darts examples with an example splash
 ([scripts/make_splash_example.py](scripts/make_splash_example.py)), checks
 that the initramfs carries the script, every image and the script plugin, and

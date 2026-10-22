@@ -36,9 +36,9 @@ sys.path.insert(0, str(ROOT))
 
 from linuxlive.png import read_png, read_ppm, screen_variety, write_png  # noqa: E402
 
-# A session boot also keeps a few pictures from before the session, the boot
-# splash among them: one every BOOT_SHOT_EVERY seconds until the boot check
-# starts, blank screens skipped, at most BOOT_SHOTS.
+# Every boot also keeps a few pictures from before the boot check, the boot
+# splash among them (BIOS and UEFI alike): one every BOOT_SHOT_EVERY seconds
+# until the boot check starts, blank screens skipped, at most BOOT_SHOTS.
 BOOT_SHOTS = 8
 BOOT_SHOT_EVERY = 4
 
@@ -438,7 +438,7 @@ def run(args) -> int:
             if "LINUXLIVE_BOOTED" in log.markers:
                 presence.tick()
             now = time.monotonic()
-            if (args.session and now >= next_boot_shot and "LINUXLIVE_BOOTCHECK_START" not in log.markers
+            if (now >= next_boot_shot and "LINUXLIVE_BOOTCHECK_START" not in log.markers
                     and len(result["boot_screenshots"]) < BOOT_SHOTS):
                 next_boot_shot = now + BOOT_SHOT_EVERY
                 boot_shot(qmp, workdir, out, result)
