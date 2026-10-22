@@ -1,6 +1,6 @@
 [project]
 name = "linuxlive"
-version = "0.9.0"
+version = "0.9.1"
 description = "Compile a distro spec into a container build and a bootable live ISO"
 license = "GPL-3.0-or-later"
 readme = "README.md"
