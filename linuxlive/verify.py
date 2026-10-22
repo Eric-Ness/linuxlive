@@ -346,6 +346,46 @@ def _check_not_blank(c: _Collector, mode_dir: Path, result: dict, what: str = "t
              f"measured {', '.join(measured) or 'no screenshots'})")
 
 
+def _session_shell(plan: Plan) -> str:
+    # Kiosk mode: Cage, not a desktop.
+    return "cage" if plan.kiosk_app is not None else plan.desktop.shell_process
+
+
+def _check_shell_ran(c: _Collector, plan: Plan, result: dict, where: str, place: str) -> None:
+    """The desktop shell stayed up from login until the test ended, and nothing
+    crashed meanwhile (bootcheck's shell_after_settle, shell_watch,
+    shell_crashed, shell_restarted and crash_report facts)."""
+    shell = _session_shell(plan)
+    after = _fact(result, "shell_after_settle")
+    errors = _facts(result, "session_error")
+    c.expect(
+        after == shell,
+        f"{where}desktop shell still running 30 s after login: {after!r}, expected {shell!r}"
+        + (f"; session errors: {' | '.join(errors)}" if errors else ""),
+    )
+    # bootcheck goes on watching the shell until the VM is stopped after the
+    # last screenshot, and says so if it dies (or Cinnamon falls back) later.
+    crashed = _fact(result, "shell_crashed")
+    c.expect(
+        _fact(result, "shell_watch") == shell and crashed is None,
+        f"{where}desktop shell kept running until the test ended (watched: {_fact(result, 'shell_watch')!r}"
+        + (f", crashed {crashed} s after login" if crashed is not None else "")
+        + ")"
+        + (f"; session errors: {' | '.join(errors)}" if errors and crashed is not None else ""),
+    )
+    # One that crashed and came back (the user logged in again) is running too, as another process.
+    restarted = _fact(result, "shell_restarted")
+    c.expect(
+        restarted is None,
+        f"{where}desktop shell is still the one that started at login"
+        + (f" (restarted: {restarted})" if restarted else "")
+        + (f"; session errors: {' | '.join(errors)}" if errors and restarted else ""),
+    )
+    # Ubuntu tells the user about each one ("... has experienced an internal error").
+    crashes = _facts(result, "crash_report")
+    c.expect(not crashes, f"{where}nothing crashed {place}" + (f" (crash reports: {' | '.join(crashes)})" if crashes else ""))
+
+
 def check_session(plan: Plan, results: Path) -> list[Outcome]:
     spec = plan.spec
     c = _Collector("session")
@@ -369,7 +409,7 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
         c.expect(_fact(result, "build_id") == build_id, f"BUILD_ID is {_fact(result, 'build_id')!r}, expected this build's {build_id!r}")
     kiosk = plan.kiosk_app is not None
     # Kiosk mode: Cage, not a desktop; the installer is in the boot menu only.
-    shell = "cage" if kiosk else plan.desktop.shell_process
+    shell = _session_shell(plan)
     c.expect(_fact(result, "shell") == shell, f"desktop shell is {_fact(result, 'shell')!r}, expected {shell!r}")
     if kiosk:
         c.expect(_fact(result, "session_user") == KIOSK_USER, f"kiosk mode runs as {KIOSK_USER} (session user {_fact(result, 'session_user')!r})")
@@ -392,34 +432,7 @@ def check_session(plan: Plan, results: Path) -> list[Outcome]:
         listed = _fact(result, "installer_disks") or ""
         c.expect(listed.isdigit() and int(listed) >= 1, f"the installer's window can list the disks as the live user (installer_disks {listed!r})")
     c.expect(_fact(result, "first_login_wizard") == "none", f"no upstream welcome wizard opens in the live session (running: {_fact(result, 'first_login_wizard')!r})")
-    after = _fact(result, "shell_after_settle")
-    errors = _facts(result, "session_error")
-    c.expect(
-        after == shell,
-        f"desktop shell still running 30 s after login: {after!r}, expected {shell!r}"
-        + (f"; session errors: {' | '.join(errors)}" if errors else ""),
-    )
-    # bootcheck goes on watching the shell until the VM is stopped after the
-    # last screenshot, and says so if it dies (or Cinnamon falls back) later.
-    crashed = _fact(result, "shell_crashed")
-    c.expect(
-        _fact(result, "shell_watch") == shell and crashed is None,
-        f"desktop shell kept running until the test ended (watched: {_fact(result, 'shell_watch')!r}"
-        + (f", crashed {crashed} s after login" if crashed is not None else "")
-        + ")"
-        + (f"; session errors: {' | '.join(errors)}" if errors and crashed is not None else ""),
-    )
-    # One that crashed and came back (the user logged in again) is running too, as another process.
-    restarted = _fact(result, "shell_restarted")
-    c.expect(
-        restarted is None,
-        "desktop shell is still the one that started at login"
-        + (f" (restarted: {restarted})" if restarted else "")
-        + (f"; session errors: {' | '.join(errors)}" if errors and restarted else ""),
-    )
-    # Ubuntu tells the user about each one ("... has experienced an internal error").
-    crashes = _facts(result, "crash_report")
-    c.expect(not crashes, "nothing crashed in the live session" + (f" (crash reports: {' | '.join(crashes)})" if crashes else ""))
+    _check_shell_ran(c, plan, result, "", "in the live session")
     c.expect(
         _fact(result, "plymouth_theme") == "linuxlive",
         f"Plymouth theme is {_fact(result, 'plymouth_theme')!r}, expected 'linuxlive'",
@@ -541,6 +554,9 @@ def check_install(plan: Plan, results: Path) -> list[Outcome]:
             c.expect(_fact(uefi, "autologin_users") == TEST_USER,
                      f"installed-uefi-sb: the spec's automatic login is on for {TEST_USER!r} (login screen logs in: {_fact(uefi, 'autologin_users')!r})")
         c.expect(_fact(uefi, "os_name") == plan.spec.name, f"installed-uefi-sb: os-release NAME is {_fact(uefi, 'os_name')!r}")
+        # The installed desktop is the one people keep: its shell must stay up too
+        # (Cinnamon's fallback-mode dialog is all that is left when it does not).
+        _check_shell_ran(c, plan, uefi, "installed-uefi-sb: ", "on the installed desktop")
         c.expect(_fact(uefi, "first_login_wizard") == "none", f"installed-uefi-sb: no first-login welcome wizard opens (running: {_fact(uefi, 'first_login_wizard')!r})")
         c.expect(_fact(uefi, "installer_icon") != "desktop", f"installed-uefi-sb: no installer on the installed desktop (installer_icon {_fact(uefi, 'installer_icon')!r})")
         apps = sorted(_facts(live, "flatpak"))
