@@ -348,10 +348,6 @@ jobs:
           KEEP_ISO: ${{ inputs.keep-iso }}
           RETENTION: ${{ inputs.iso-retention-days }}
         run: |
-          # Checks that passed but found something worth a look, as warnings on the run.
-          if [ -f build/verify.txt ]; then
-            sed -n 's/^WARN /::warning::/p' build/verify.txt
-          fi
           {
             echo "## linuxlive build: ${NAME:-not started}"
             if [ -f build/verify.txt ] && grep -q '^VERIFY OK' build/verify.txt; then
