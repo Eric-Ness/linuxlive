@@ -238,9 +238,36 @@ jobs:
             printf 'LL_IMAGE_REF=%s:latest\n' "$REGISTRY_IMAGE" > build/ctx/rootfs/usr/lib/linuxlive/image.env
           fi
 
+      # Anonymous pulls are rationed per IP, and GitHub's runners share their
+      # IPs, so a registry can refuse (toomanyrequests) whatever we do. Docker's
+      # official images are on Amazon's mirror and Docker Hub with the same
+      # digest: try one, then the other, a few rounds, and give the build the
+      # image under the name its Containerfile uses.
+      - name: Pull the base image
+        run: |
+          base=$(python -c "import json; print(json.load(open('build/ctx/linuxlive.json'))['base_image'])")
+          case "$base" in
+            public.ecr.aws/docker/library/*) sources="$base docker.io/library/${base#public.ecr.aws/docker/library/}" ;;
+            docker.io/library/*) sources="$base public.ecr.aws/docker/library/${base#docker.io/library/}" ;;
+            *) sources="$base" ;;
+          esac
+          for round in 1 2 3; do
+            for src in $sources; do
+              if sudo podman pull --retry 2 "$src"; then
+                [ "$src" = "$base" ] || sudo podman tag "$src" "$base"
+                echo "base image $base from $src"
+                exit 0
+              fi
+            done
+            echo "::warning::no registry gave $base (round $round); waiting $((round * 60)) s"
+            sleep $((round * 60))
+          done
+          echo "::error::could not pull $base from any of: $sources"
+          exit 1
+
       - name: Build image
         run: |
-          sudo podman build --pull=newer --tag "$IMAGE" --build-arg "LL_BUILD_ID=$BUILD_ID" \
+          sudo podman build --pull=never --tag "$IMAGE" --build-arg "LL_BUILD_ID=$BUILD_ID" \
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" build/ctx
 
       - name: Publish the image for this run
