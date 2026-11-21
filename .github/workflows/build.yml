@@ -253,7 +253,8 @@ jobs:
           esac
           for round in 1 2 3; do
             for src in $sources; do
-              if sudo podman pull --retry 2 "$src"; then
+              # (No --retry: the runner's podman 4.9 has none; the rounds retry.)
+              if sudo podman pull "$src"; then
                 [ "$src" = "$base" ] || sudo podman tag "$src" "$base"
                 echo "base image $base from $src"
                 exit 0
