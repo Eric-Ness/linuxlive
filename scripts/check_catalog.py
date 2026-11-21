@@ -93,6 +93,21 @@ def image_tag(ref: str) -> str | None:
         status, body = fetch(f"https://quay.io/api/v1/repository/{repo}/tag/?specificTag={tag}&onlyActiveTags=true")
         tags = json.loads(body or b"{}").get("tags") if status == 200 else None
         return None if tags else f"quay.io has no active tag {tag}"
+    if registry == "public.ecr.aws":
+        # An anonymous token, then the tag's manifest (index or single image).
+        status, body = fetch("https://public.ecr.aws/token/")
+        token = json.loads(body or b"{}").get("token") if status == 200 else None
+        if not token:
+            return f"public.ecr.aws gave no token (HTTP {status})"
+        request = urllib.request.Request(f"https://public.ecr.aws/v2/{repo}/manifests/{tag}", method="HEAD", headers={
+            **UA, "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, "
+                      "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"})
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return None if response.status == 200 else f"public.ecr.aws returned HTTP {response.status}"
+        except urllib.error.HTTPError as exc:
+            return f"public.ecr.aws has no tag {tag} (HTTP {exc.code})"
     return f"no checker for registry {registry}"
 
 

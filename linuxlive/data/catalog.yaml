@@ -7,7 +7,9 @@ bases:
   ubuntu:
     label: Ubuntu 26.04 LTS
     release: "26.04"
-    image: docker.io/library/ubuntu:26.04
+    # Docker's official image, from Amazon's mirror of it (the same digest):
+    # Docker Hub limits anonymous pulls, and builds started together hit it.
+    image: public.ecr.aws/docker/library/ubuntu:26.04
     # Installed first: a normal Ubuntu system on top of the minimized container image.
     system_packages: [ubuntu-minimal, ubuntu-standard, systemd-sysv, locales, sudo]
     # Live boot (casper), boot splash and the Flatpak runtime. Installed before

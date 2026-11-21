@@ -4,7 +4,7 @@
 # Stage 1: unpack the signed Secure Boot chain (shim and GRUB) from Ubuntu's
 # packages without installing them. The ISO assembler copies these binaries
 # into the ISO's EFI partition.
-FROM docker.io/library/ubuntu:26.04 AS efi
+FROM public.ecr.aws/docker/library/ubuntu:26.04 AS efi
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
     apt-get update; \
@@ -21,7 +21,7 @@ RUN set -eux; \
     cp /x/usr/lib/grub/arm64-efi-signed/gcdaa64.efi.signed /out/grubaa64.efi
 
 # Stage 2: the distro.
-FROM docker.io/library/ubuntu:26.04
+FROM public.ecr.aws/docker/library/ubuntu:26.04
 ENV DEBIAN_FRONTEND=noninteractive
 COPY rootfs/etc/apt/preferences.d/linuxlive /etc/apt/preferences.d/linuxlive
 

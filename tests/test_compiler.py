@@ -53,11 +53,11 @@ ONLY = {
     ],
 }
 FROM = {
-    ("ubuntu", "gnome"): "docker.io/library/ubuntu:26.04",
-    ("ubuntu", "kde"): "docker.io/library/ubuntu:26.04",
+    ("ubuntu", "gnome"): "public.ecr.aws/docker/library/ubuntu:26.04",
+    ("ubuntu", "kde"): "public.ecr.aws/docker/library/ubuntu:26.04",
     ("fedora", "gnome"): "quay.io/fedora/fedora-silverblue:44",
     ("fedora", "kde"): "quay.io/fedora/fedora-kinoite:44",
-    ("ubuntu", "cinnamon"): "docker.io/library/ubuntu:26.04",
+    ("ubuntu", "cinnamon"): "public.ecr.aws/docker/library/ubuntu:26.04",
     ("fedora", "cinnamon"): "quay.io/fedora-ostree-desktops/base-atomic:44",
 }
 EXAMPLE_NAMES = sorted(p.stem for p in EXAMPLES.glob("*.yaml"))

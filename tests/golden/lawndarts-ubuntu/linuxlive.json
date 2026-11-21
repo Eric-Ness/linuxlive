@@ -16,7 +16,7 @@
     "label": "Ubuntu 26.04 LTS",
     "release": "26.04"
   },
-  "base_image": "docker.io/library/ubuntu:26.04",
+  "base_image": "public.ecr.aws/docker/library/ubuntu:26.04",
   "branding": {
     "accent_color": "#e0661f",
     "gnome_accent": null,
