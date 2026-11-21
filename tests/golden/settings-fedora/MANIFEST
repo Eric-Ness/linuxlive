@@ -9,6 +9,7 @@
 0644 d186a6df42f0cbf14940ea3855d26f19408d4884a915bd57cc7610f4d84b84fc rootfs/etc/xdg/autostart/linuxlive-branding.desktop
 0644 4f0f848de653e50ddf0beed12f7a1e0d3f73ee4c0190ed19510f0b9d0b365df6 rootfs/etc/xdg/autostart/linuxlive-install-on-boot.desktop
 0644 33c1e17d2764099f40d9d8b7bc1119d53dc71af1a0482e5351727842449b6f71 rootfs/etc/xdg/kxkbrc
+0644 78cf3202cf2af27d8114ee355609943004769dd59696dd19e3c0eb0fcd7b3459 rootfs/usr/lib/bootc/kargs.d/10-linuxlive.toml
 0644 fb8a076fa2cfe072ff7860a464d702efe904fa7705802f7cb5e4a202107a7e95 rootfs/usr/lib/linuxlive/branding.env
 0644 0d65b4c4768aba753b641702659d5003d7b5c92b9930702a2cef2b30ba46c389 rootfs/usr/lib/linuxlive/firefox/policies/policies.json
 0644 5e8b6c5246b535741301a81f3d9b135ac7612d2db0d843e95dba0f5b0b2127da rootfs/usr/lib/systemd/system/bootloader-update.service.d/linuxlive-live.conf

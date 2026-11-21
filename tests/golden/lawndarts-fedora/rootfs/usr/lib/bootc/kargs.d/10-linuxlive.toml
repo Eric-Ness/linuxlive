@@ -1,0 +1,5 @@
+# Kernel arguments for a system bootc installs from this image (and keeps on
+# updates): Plymouth shows the boot splash only when the kernel is started
+# with rhgb, and quiet keeps the kernel's messages off it. The live ISO's boot
+# menu has its own (linuxlive/compiler/plan.py).
+kargs = ["rhgb", "quiet"]

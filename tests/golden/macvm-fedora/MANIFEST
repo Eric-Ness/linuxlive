@@ -8,6 +8,7 @@
 0644 ed17eb0439325ecacc4c8cc36242ee296cf8bf84613f36d27985b1099dab21cd rootfs/etc/sysconfig/livesys
 0644 d186a6df42f0cbf14940ea3855d26f19408d4884a915bd57cc7610f4d84b84fc rootfs/etc/xdg/autostart/linuxlive-branding.desktop
 0644 4f0f848de653e50ddf0beed12f7a1e0d3f73ee4c0190ed19510f0b9d0b365df6 rootfs/etc/xdg/autostart/linuxlive-install-on-boot.desktop
+0644 78cf3202cf2af27d8114ee355609943004769dd59696dd19e3c0eb0fcd7b3459 rootfs/usr/lib/bootc/kargs.d/10-linuxlive.toml
 0644 95ed7e4396fe5a4d34a23bd9834810d4efb327cd88173b2b3b929a941dbe4b66 rootfs/usr/lib/linuxlive/branding.env
 0644 5e8b6c5246b535741301a81f3d9b135ac7612d2db0d843e95dba0f5b0b2127da rootfs/usr/lib/systemd/system/bootloader-update.service.d/linuxlive-live.conf
 0644 45139d0baef7f481b5aa94157eabaf74c07a756047adbbdf9d9586f9d1171755 rootfs/usr/lib/systemd/system/linuxlive-autoinstall.service

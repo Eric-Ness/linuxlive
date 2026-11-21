@@ -544,6 +544,9 @@ def check_install(plan: Plan, results: Path) -> list[Outcome]:
             c.expect(_fact(uefi, "root_fstype") == "ext4", f"installed-uefi-sb: root file system is {_fact(uefi, 'root_fstype')!r}, expected 'ext4'")
         if fedora:
             c.expect(_fact(uefi, "bootc_image") == image, f"installed-uefi-sb: a bootc system updating from {image!r} (bootc status: {_fact(uefi, 'bootc_image')!r})")
+            # Plymouth draws the splash only for a kernel started with rhgb (the image's kargs.d).
+            cmdline = (_fact(uefi, "cmdline") or "").split()
+            c.expect("rhgb" in cmdline, f"installed-uefi-sb: the installed system starts with the boot splash (rhgb in cmdline {' '.join(cmdline)!r})")
         else:
             c.expect(_fact(uefi, "casper_installed") == "no", f"installed-uefi-sb: casper removed (casper_installed {_fact(uefi, 'casper_installed')!r})")
         c.expect(_fact(uefi, "login_users") == TEST_USER, f"installed-uefi-sb: the only login user is {TEST_USER!r} (found {_fact(uefi, 'login_users')!r})")

@@ -133,7 +133,8 @@ def make_results(root: Path, base: str = "ubuntu") -> Path:
     if base == "ubuntu":
         installed["facts"].update(root_fstype=["ext4"], casper_installed=["no"])
     else:
-        installed["facts"].update(root_fstype=["overlay"], sysroot_fstype=["xfs"], bootc_image=[FEDORA_IMAGE])
+        installed["facts"].update(root_fstype=["overlay"], sysroot_fstype=["xfs"], bootc_image=[FEDORA_IMAGE],
+                                  cmdline=["BOOT_IMAGE=(hd0,gpt2)/boot/ostree/default/vmlinuz root=UUID=0 rw rhgb quiet"])
     bios = boot_result("bios-usb", base, session=False)
     bios["mode"] = "installed-bios"
     bios["facts"].update(boot_medium=["disk"])
@@ -421,6 +422,23 @@ def test_selinux_must_be_enforcing_on_fedora(tmp_path):
     edit_json(results / rel, change)
     found = failures(verify_results(load("fedora"), results, expect_commit=COMMIT))
     assert any("SELinux is 'Permissive'" in f for f in found), found
+
+
+def test_installed_fedora_must_start_with_the_splash(tmp_path):
+    results = make_results(tmp_path / "r", "fedora")
+    assert not failures(verify_results(load("fedora"), results, expect_commit=COMMIT))
+    rel, change = _set_fact("installed-uefi-sb", "cmdline", ["BOOT_IMAGE=(hd0,gpt2)/boot/ostree/default/vmlinuz root=UUID=0 rw"])
+    edit_json(results / rel, change)
+    found = failures(verify_results(load("fedora"), results, expect_commit=COMMIT))
+    assert any("installed system starts with the boot splash" in f for f in found), found
+
+
+def test_fedora_image_sets_the_splash_kernel_arguments():
+    # bootc install to-disk reads /usr/lib/bootc/kargs.d/*.toml from the image.
+    import tomllib
+    from linuxlive.compiler.common import ROOTFS_DATA
+    kargs = tomllib.loads((ROOTFS_DATA / "fedora/usr/lib/bootc/kargs.d/10-linuxlive.toml").read_text())["kargs"]
+    assert "rhgb" in kargs and "quiet" in kargs
 
 
 @pytest.mark.parametrize(
