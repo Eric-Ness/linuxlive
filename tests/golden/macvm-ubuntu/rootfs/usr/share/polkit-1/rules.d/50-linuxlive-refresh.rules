@@ -1,0 +1,19 @@
+// Refreshing what software is available needs no password from a user at the
+// computer, whether or not their session is the active one.
+//
+// Flatpak and PackageKit allow these two actions without a password only in
+// the active session. GNOME Software refreshes in the background, and it can
+// do so while the session is briefly inactive: just after an automatic login,
+// or while the screen is locked. It then asked for an administrator's
+// password, which a live session's user does not have ("Authentication is
+// required to update information about software"). Both actions only fetch
+// signed metadata (Flatpak's own policy notes appstream data is signed); they
+// install nothing.
+polkit.addRule(function (action, subject) {
+    if ((action.id == "org.freedesktop.Flatpak.appstream-update" ||
+         action.id == "org.freedesktop.packagekit.system-sources-refresh") &&
+        subject.local) {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});

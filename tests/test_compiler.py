@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 from pathlib import Path
@@ -226,6 +227,25 @@ def test_jpeg_wallpaper_keeps_its_format(workspace):
     ctx, plan = build_context(load_spec(write_spec(workspace, spec_data(branding={"wallpaper": "assets/photo.png"}))))
     assert plan.wallpaper_path == "/usr/share/backgrounds/linuxlive/wallpaper.jpg"
     assert "rootfs/usr/share/backgrounds/linuxlive/wallpaper.jpg" in ctx.paths()
+
+
+@pytest.mark.parametrize("base", ["ubuntu", "fedora"])
+def test_software_refresh_needs_no_password_on_either_base(workspace, base):
+    # GNOME Software refreshes in the background, sometimes while the session
+    # is inactive (just after automatic login, or locked); Flatpak's and
+    # PackageKit's defaults then ask for an administrator's password, which a
+    # live user does not have. The rule allows those two refreshes, and only
+    # those, for local users.
+    ctx, _ = build_context(load_spec(write_spec(workspace, spec_data(base=base))))
+    rule = text(ctx, "rootfs/usr/share/polkit-1/rules.d/50-linuxlive-refresh.rules")
+    code = "\n".join(line for line in rule.splitlines() if not line.lstrip().startswith("//"))
+    assert sorted(re.findall(r'action\.id == "([^"]+)"', code)) == [
+        "org.freedesktop.Flatpak.appstream-update",
+        "org.freedesktop.packagekit.system-sources-refresh",
+    ]
+    assert "subject.local" in code
+    assert code.count("polkit.Result.YES") == 1
+    assert "polkit.Result.NOT_HANDLED" in code
 
 
 def test_no_host_paths_leak_into_the_context(workspace):

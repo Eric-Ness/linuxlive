@@ -39,3 +39,4 @@
 0644 1b3ca5e7c72bb56bdf100c524fb9aff56aabd53f77d403e38fa91c1509e167f0 rootfs/usr/share/pixmaps/linuxlive-logo.png
 0644 d3c0b850152be37144e6cc82f177c4e2f50fa0f8cbf1f81753af2a8e658a30c8 rootfs/usr/share/plymouth/themes/linuxlive/linuxlive.plymouth
 0644 1b3ca5e7c72bb56bdf100c524fb9aff56aabd53f77d403e38fa91c1509e167f0 rootfs/usr/share/plymouth/themes/linuxlive/watermark.png
+0644 9f1cccfe6af4b4e7694f98ec8fe25b86a5807e479120d80c7771fc7548b88141 rootfs/usr/share/polkit-1/rules.d/50-linuxlive-refresh.rules
